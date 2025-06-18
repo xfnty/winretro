@@ -1,0 +1,7 @@
+# Files
+*.ignore
+
+# Folders
+out/
+tmp/
+*.ignore/
