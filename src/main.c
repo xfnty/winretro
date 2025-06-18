@@ -19,11 +19,6 @@ LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 void main(void)
 {
-#if defined(DEBUG)
-    AttachConsole(ATTACH_PARENT_PROCESS);
-    WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE), "debug\n", 6, 0, 0);
-#endif
-
     HINSTANCE instance = GetModuleHandle(0);
     WNDCLASSA class = {
         .style = CS_OWNDC,

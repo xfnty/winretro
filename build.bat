@@ -1,20 +1,15 @@
 @echo off
-setlocal enableextensions
-setlocal enabledelayedexpansion
+setlocal enableextensions enabledelayedexpansion
 pushd "%~dp0"
 
 if "%1"=="dist" (
     set buildtype=%1
     set cflags=/O2 /fp:fast
     set lflags=/nodefaultlib
-) else if "%1"=="release" (
-    set buildtype=%1
-    set cflags=/O2 /fp:fast
-    set lflags=/debug
 ) else if "%1"=="" (
     set buildtype=debug
-    set cflags=/Od /GS /RTC1 /D DEBUG
-    set lflags=/debug ucrtd.lib msvcrtd.lib vcruntimed.lib
+    set cflags=/Z7 /O2 /fp:fast
+    set lflags=/nodefaultlib /debug
 ) else (
     echo Unknown build type "%1"
     exit /b 1
@@ -29,13 +24,13 @@ set start=%time%
 if not exist %out% mkdir %out%
 if not exist %tmp% mkdir %tmp%
 
-echo.> %tmp%\unity.c
+echo int _fltused=1;> %tmp%\unity.c
 for /r src %%c in (*.c) do (
     echo #include "%%c">> %tmp%\unity.c
 )
 
 cl.exe ^
-/nologo /options:strict /Wall /WX /GR- /Oi %cflags% ^
+/nologo /options:strict /Wall /Oi %cflags% ^
 /D WINVER=_WIN32_WINNT_WIN7 /D _WIN32_WINNT=_WIN32_WINNT_WIN7 ^
 /D _WIN32_WINNT_WIN10_TH2=0 /D _WIN32_WINNT_WIN10_RS1=0 /D _WIN32_WINNT_WIN10_RS2=0 ^
 /D _WIN32_WINNT_WIN10_RS3=0 /D _WIN32_WINNT_WIN10_RS4=0 /D _WIN32_WINNT_WIN10_RS5=0 ^
@@ -43,7 +38,7 @@ cl.exe ^
 %tmp%\unity.c ^
 /Fe:%out%\frontend.exe /Fo:%tmp%\unity.o ^
 /link /entry:main /subsystem:windows %lflags% kernel32.lib user32.lib gdi32.lib
-if not errorlevel 0 exit /b %ERRORLEVEL%
+if %ERRORLEVEL% NEQ 0 goto failure
 set end=%time%
 
 echo.
@@ -65,4 +60,9 @@ if 1%ms% lss 100 set ms=0%ms%
 set /a totalsecs = %hours%*3600 + %mins%*60 + %secs%
 echo Time: %totalsecs%.%ms% seconds
 
+popd
+exit /b 0
+
+:failure
+exit /b 1
 popd
