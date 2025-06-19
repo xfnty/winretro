@@ -1,5 +1,7 @@
 #include <windows.h>
 
+#include "common.h"
+
 #define WNDCLASS_NAME "tiny-libretro-frontend"
 
 static HANDLE stdout;
@@ -28,7 +30,7 @@ void main(void)
         .hCursor = LoadCursor(0, IDC_ARROW),
         .hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH),
     };
-    RegisterClassA(&class);
+    assert(RegisterClassA(&class));
     HWND window = CreateWindowExA(
         0,
         WNDCLASS_NAME,
@@ -41,6 +43,7 @@ void main(void)
         instance,
         0
     );
+    assert(window);
     ShowWindow(window, SW_SHOW);
 
     for (MSG msg; GetMessageA(&msg, 0, 0, 0) != 0;)
