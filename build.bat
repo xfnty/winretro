@@ -2,14 +2,29 @@
 setlocal enableextensions enabledelayedexpansion
 pushd "%~dp0"
 
+set cflags=/nologo /options:strict /Wall /wd4711 /wd5045 /wd4820 /Oi /GS- /fp:fast
+set includes=/I %~dp0src
+set lflags=/nodefaultlib
+set cdefs=^
+/D BUILD_DEBUG=1 /D BUILD_DIST=2 ^
+/D WIN32_LEAN_AND_MEAN /D NOMINMAX /D NOGDICAPMASKS /D NOSYSMETRICS /D NOMENUS /D NOICONS ^
+/D NOKEYSTATES /D NOSYSCOMMANDS /D NORASTEROPS /D OEMRESOURCE /D NOATOM /D NOCLIPBOARD /D NOCOLOR ^
+/D NODRAWTEXT /D NONLS /D NOMEMMGR /D NOMB /D NOMETAFILE /D NOOPENFILE /D NOSCROLL /D NOSERVICE ^
+/D NOSOUND /D NOTEXTMETRIC /D NOWH /D NOWINOFFSETS /D NOCOMM /D NOKANJI /D NOHELP /D NOPROFILER ^
+/D NODEFERWINDOWPOS /D NOMCX /D NOCRYPT /D NOIME ^
+/D WINVER=_WIN32_WINNT_WIN7 /D _WIN32_WINNT=_WIN32_WINNT_WIN7 ^
+/D _WIN32_WINNT_WIN10_TH2=0 /D _WIN32_WINNT_WIN10_RS1=0 /D _WIN32_WINNT_WIN10_RS2=0 ^
+/D _WIN32_WINNT_WIN10_RS3=0 /D _WIN32_WINNT_WIN10_RS4=0 /D _WIN32_WINNT_WIN10_RS5=0
+
 if "%1"=="dist" (
     set buildtype=%1
-    set cflags=/O2 /fp:fast
-    set lflags=/nodefaultlib
+    set cflags=%cflags% /O2
+    set cdefs=%cdefs% /D BUILD_TYPE=BUILD_DIST
 ) else if "%1"=="" (
     set buildtype=debug
-    set cflags=/Z7 /O2 /fp:fast
-    set lflags=/nodefaultlib /debug
+    set cflags=%cflags% /Z7 /Ob2
+    set cdefs=%cdefs% /D BUILD_TYPE=BUILD_DEBUG
+    set lflags=%lflags% /debug
 ) else (
     echo Unknown build type "%1"
     exit /b 1
@@ -29,20 +44,13 @@ for /r src %%c in (*.c) do (
     echo #include "%%c">> %tmp%\unity.c
 )
 
-cl.exe ^
-/nologo /options:strict /Wall /Oi %cflags% ^
-/D WIN32_LEAN_AND_MEAN /D NOMINMAX /D NOGDICAPMASKS /D NOSYSMETRICS /D NOMENUS /D NOICONS ^
-/D NOKEYSTATES /D NOSYSCOMMANDS /D NORASTEROPS /D OEMRESOURCE /D NOATOM /D NOCLIPBOARD /D NOCOLOR ^
-/D NOCTLMGR /D NODRAWTEXT /D NONLS /D NOMEMMGR /D NOMB /D NOMETAFILE /D NOOPENFILE /D NOSCROLL ^
-/D NOSERVICE /D NOSOUND /D NOTEXTMETRIC /D NOWH /D NOWINOFFSETS /D NOCOMM /D NOKANJI /D NOHELP ^
-/D NOPROFILER /D NODEFERWINDOWPOS /D NOMCX /D NOCRYPT /D NOIME ^
-/D WINVER=_WIN32_WINNT_WIN7 /D _WIN32_WINNT=_WIN32_WINNT_WIN7 ^
-/D _WIN32_WINNT_WIN10_TH2=0 /D _WIN32_WINNT_WIN10_RS1=0 /D _WIN32_WINNT_WIN10_RS2=0 ^
-/D _WIN32_WINNT_WIN10_RS3=0 /D _WIN32_WINNT_WIN10_RS4=0 /D _WIN32_WINNT_WIN10_RS5=0 ^
-/I %~dp0src ^
-%tmp%\unity.c ^
-/Fe:%out%\frontend.exe /Fo:%tmp%\unity.o ^
-/link /entry:main /subsystem:windows %lflags% kernel32.lib user32.lib gdi32.lib
+set compile_command=cl.exe %cflags% %cdefs% %includes% %tmp%\unity.c /Fe:%out%\frontend.exe ^
+/Fo:%tmp%\unity.o /link /entry:main /subsystem:windows %lflags% kernel32.lib user32.lib gdi32.lib ^
+comdlg32.lib vcruntime.lib
+
+echo %compile_command% > %tmp%\compile_command.txt
+
+%compile_command%
 if %ERRORLEVEL% NEQ 0 goto failure
 set end=%time%
 

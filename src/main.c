@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <commdlg.h>
 
 #include "common.h"
 
@@ -45,6 +46,20 @@ void main(void)
     );
     assert(window);
     ShowWindow(window, SW_SHOW);
+
+    char file[260] = {0};
+    OPENFILENAMEA open_dialog = {
+        .lStructSize = sizeof(open_dialog),
+        .hwndOwner = window,
+        .lpstrFilter = ".DLL",
+        .lpstrFile = file,
+        .nMaxFile = sizeof(file),
+        .Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST,
+    };
+    if (GetOpenFileNameA(&open_dialog))
+    {
+        Core_Load(open_dialog.lpstrFile);
+    }
 
     for (MSG msg; GetMessageA(&msg, 0, 0, 0) != 0;)
     {
