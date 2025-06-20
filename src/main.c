@@ -1,11 +1,9 @@
-#include <windows.h>
-#include <commdlg.h>
 
 #include "common.h"
 
-#define WNDCLASS_NAME "tiny-libretro-frontend"
+#include "miniwindows.h"
 
-static HANDLE stdout;
+#define WNDCLASS_NAME "tiny-libretro-frontend"
 
 LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
@@ -22,14 +20,15 @@ LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 void main(void)
 {
-    HINSTANCE instance = GetModuleHandle(0);
+    volatile int e;
+    HINSTANCE instance = GetModuleHandleA(0);
     WNDCLASSA class = {
         .style = CS_OWNDC,
         .hInstance = instance,
         .lpszClassName = WNDCLASS_NAME,
         .lpfnWndProc = WindowEventHandler,
-        .hCursor = LoadCursor(0, IDC_ARROW),
-        .hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH),
+        .hCursor = LoadCursorA(0, IDC_ARROW),
+        .hbrBackground = GetStockObject(WHITE_BRUSH),
     };
     assert(RegisterClassA(&class));
     HWND window = CreateWindowExA(
@@ -44,6 +43,7 @@ void main(void)
         instance,
         0
     );
+    e = GetLastError();
     assert(window);
     ShowWindow(window, SW_SHOW);
 
@@ -51,14 +51,19 @@ void main(void)
     OPENFILENAMEA open_dialog = {
         .lStructSize = sizeof(open_dialog),
         .hwndOwner = window,
-        .lpstrFilter = ".DLL",
+        .lpstrFilter = "Libretro Core (*.dll)\0*.DLL\0All Files (*.*)\0*.*\0",
+        .nFilterIndex = 1,
         .lpstrFile = file,
         .nMaxFile = sizeof(file),
         .Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST,
     };
-    if (GetOpenFileNameA(&open_dialog))
+    if (GetOpenFileNameA(&open_dialog) && Core_Load(open_dialog.lpstrFile))
     {
-        Core_Load(open_dialog.lpstrFile);
+        info("core: %s", Core_GetName());
+    }
+    else
+    {
+        error("OFN: %x, last error: %d", CommDlgExtendedError(), GetLastError());
     }
 
     for (MSG msg; GetMessageA(&msg, 0, 0, 0) != 0;)
@@ -67,7 +72,5 @@ void main(void)
         DispatchMessageA(&msg);
     }
 
-    DestroyWindow(window);
-    UnregisterClassA(WNDCLASS_NAME, instance);
     ExitProcess(0);
 }

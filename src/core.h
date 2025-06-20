@@ -1,8 +1,8 @@
 #pragma once
 
-#include <stdbool.h>
+#include "common.h"
 
-bool Core_Load(const char *path);
+u8   Core_Load(cstr path);
 void Core_Free(void);
 
-const char *Core_GetName(void);
+cstr Core_GetName(void);
