@@ -40,6 +40,7 @@ typedef LRESULT LPARAM;
 typedef u64 WPARAM;
 typedef u64 UINT_PTR;
 typedef u32 DWORD;
+typedef u64 DWORD64;
 typedef u16 WORD;
 typedef WORD ATOM;
 
@@ -130,6 +131,7 @@ BOOL WriteConsoleA(HANDLE console, const ptr buffer, DWORD bytes, DWORD *written
 DWORD GetLastError(void);
 void OutputDebugStringA(LPCSTR str);
 BOOL IsDebuggerPresent(void);
+void RtlZeroMemory(void *buffer, DWORD64 size);
 
 /* user32.dll */
 ATOM RegisterClassA(WNDCLASSA *cls);

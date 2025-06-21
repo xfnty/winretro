@@ -47,7 +47,7 @@ void main(void)
     assert(window);
     ShowWindow(window, SW_SHOW);
 
-    char file[260] = {0};
+    char file[260];
     OPENFILENAMEA open_dialog = {
         .lStructSize = sizeof(open_dialog),
         .hwndOwner = window,

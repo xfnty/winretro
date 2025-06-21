@@ -77,6 +77,7 @@ typedef i16   (*retro_input_state_t)(u16 port, u16 device, u16 index, u16 id);
 typedef struct Core Core;
 struct Core {
     HMODULE dll;
+    CoreState state;
     retro_system_info    info;
     retro_system_av_info avinfo;
     struct {
@@ -121,6 +122,7 @@ u8 Core_Load(cstr path)
 
     core.api.retro_get_system_info(&core.info);
     core.api.retro_get_system_av_info(&core.avinfo);
+    core.state = CORE_LOADED;
 
     return true;
 }
@@ -128,10 +130,15 @@ u8 Core_Load(cstr path)
 void Core_Free(void)
 {
     FreeLibrary(core.dll);
-    core = (Core){0};
+    RtlZeroMemory(&core, sizeof(core));
 }
 
 cstr Core_GetName(void)
 {
     return core.info.library_name;
+}
+
+CoreState Core_GetState(void)
+{
+    return core.state;
 }

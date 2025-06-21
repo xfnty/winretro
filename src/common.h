@@ -13,7 +13,7 @@ typedef unsigned __int8  u8;
 typedef unsigned __int16 u16;
 typedef unsigned __int32 u32;
 typedef unsigned __int64 u64;
-typedef __int64 size;
+typedef __int64 ssize;
 typedef unsigned __int64 usize;
 typedef const char *cstr;
 typedef float  f32;
@@ -31,7 +31,7 @@ typedef char *va_list;
 void __debugbreak(void);
 void __cdecl __va_start(va_list* , ...);
 
-#define countof(_x) (size)(sizeof(_x)/sizeof(*(_x)))
+#define countof(_x) (ssize)(sizeof(_x)/sizeof(*(_x)))
 #define assert(_x) do { if (!(_x)) __debugbreak(); } while(0)
 #define va_start(_list, _arg) ((void)(__va_start(&_list, _arg)))
 #define va_arg(_list, _T) ( \

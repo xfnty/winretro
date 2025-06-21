@@ -2,7 +2,7 @@
 setlocal enableextensions enabledelayedexpansion
 pushd "%~dp0"
 
-set cflags=/nologo /options:strict /Wall /wd4711 /wd5045 /wd4820 /Oi /GS- /fp:fast
+set cflags=/nologo /options:strict /Wall /wd4711 /wd5045 /wd4820 /Oi- /GS- /fp:fast
 set includes=/I %~dp0src
 set lflags=/nodefaultlib
 set cdefs=
@@ -35,7 +35,7 @@ for /r src %%c in (*.c) do (
 
 set compile_command=cl.exe %cflags% %cdefs% %includes% %tmp%\unity.c /Fe:%out%\frontend.exe ^
 /Fo:%tmp%\unity.o /link /entry:main /subsystem:windows %lflags% kernel32.lib user32.lib gdi32.lib ^
-comdlg32.lib vcruntime.lib
+comdlg32.lib
 
 echo %compile_command% > %tmp%\compile_command.txt
 
