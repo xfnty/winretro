@@ -2,67 +2,94 @@
 
 #include "miniwindows.h"
 
+typedef enum LoggingState LoggingState;
+enum LoggingState {
+    LOGGING_UNINITIALIZED = 0,
+    LOGGING_DISABLED = 1,
+    LOGGING_DEBUGGER = 2,
+    LOGGING_STDOUT   = 3,
+};
+
+static LoggingState logging_state = LOGGING_UNINITIALIZED;
 static HANDLE stdout = INVALID_HANDLE_VALUE;
 
-static void CheckOrInitStdout(void)
+void InitDebugOutput(void)
 {
-    if (stdout != INVALID_HANDLE_VALUE)
-    {
-        return;
-    }
-    else if(!AttachConsole(ATTACH_PARENT_PROCESS))
-    {
-        #if BUILD_DEBUG == BUILD_DEBUG
-            if (!AllocConsole()) return;
-        #else
-            return;
-        #endif
-    }
+    assert(logging_state == LOGGING_UNINITIALIZED);
 
-    stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    assert(stdout != INVALID_HANDLE_VALUE);
-
-    DWORD mode;
-    assert(GetConsoleMode(stdout, &mode));
-    assert(SetConsoleMode(stdout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING));
+    if (AttachConsole(ATTACH_PARENT_PROCESS))
+    {
+        logging_state = LOGGING_STDOUT;
+        stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+        assert(stdout != INVALID_HANDLE_VALUE);
+        DWORD mode;
+        assert(GetConsoleMode(stdout, &mode));
+        assert(SetConsoleMode(stdout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING));
+    }
+    else if (IsDebuggerPresent())
+    {
+        logging_state = LOGGING_DEBUGGER;
+    }
+    else
+    {
+        logging_state = LOGGING_DISABLED;
+    }
 }
 
+// FIXME: code duplication
 void info(cstr fmt, ...)
 {
-    CheckOrInitStdout();
-
-    if (stdout == INVALID_HANDLE_VALUE)
-    {
-        return;
-    }
+    if (logging_state <= LOGGING_DISABLED) return;
 
     c8 buffer[1024];
-    u32 i = format(buffer, sizeof(buffer), "\x1b[0m");
+    u32 i = 0;
     va_list args;
     va_start(args, fmt);
-    i += formatv(buffer + i, sizeof(buffer) - i, fmt, args);
+
+    if (logging_state == LOGGING_STDOUT)
+    {
+        i +=  format(buffer + i, sizeof(buffer) - 1 - i, "\x1b[0m");
+        i += formatv(buffer + i, sizeof(buffer) - 1 - i, fmt, args);
+        i +=  format(buffer + i, sizeof(buffer) - 1 - i, "\x1b[0m\n");
+        assert(WriteConsoleA(stdout, buffer, i, 0, 0));
+    }
+    else
+    {
+        i += formatv(buffer + i, sizeof(buffer) - 2 - i, fmt, args);
+        buffer[i++] = '\n';
+        buffer[i] = '\0';
+        OutputDebugStringA(buffer);
+    }
+
     va_end(args);
-    i += format(buffer + i, sizeof(buffer) - i, "\x1b[0m\n");
-    assert(WriteConsoleA(stdout, buffer, i, 0, 0));
 }
 
 void error(cstr fmt, ...)
 {
-    CheckOrInitStdout();
+    if (logging_state <= LOGGING_DISABLED) return;
 
-    if (stdout == INVALID_HANDLE_VALUE)
-    {
-        return;
-    }
-    
     c8 buffer[1024];
-    u32 i = format(buffer, sizeof(buffer), "\x1b[1m\x1b[1;31merror\x1b[0m: ");
+    u32 i = 0;
     va_list args;
     va_start(args, fmt);
-    i += formatv(buffer + i, sizeof(buffer) - i, fmt, args);
+
+    if (logging_state == LOGGING_STDOUT)
+    {
+        i +=  format(buffer + i, sizeof(buffer) - 1 - i, "\x1b[1m\x1b[1;31merror\x1b[0m: ");
+        i += formatv(buffer + i, sizeof(buffer) - 1 - i, fmt, args);
+        i +=  format(buffer + i, sizeof(buffer) - 1 - i, "\x1b[0m\n");
+        assert(WriteConsoleA(stdout, buffer, i, 0, 0));
+    }
+    else
+    {
+        i +=  format(buffer + i, sizeof(buffer) - 2 - i, "error: ");
+        i += formatv(buffer + i, sizeof(buffer) - 2 - i, fmt, args);
+        buffer[i++] = '\n';
+        buffer[i] = '\0';
+        OutputDebugStringA(buffer);
+    }
+
     va_end(args);
-    i += format(buffer + i, sizeof(buffer) - i, "\x1b[0m\n");
-    assert(WriteConsoleA(stdout, buffer, i, 0, 0));
 }
 
 u32 format(c8 *buffer, u32 maxsize, cstr fmt, ...)

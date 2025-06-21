@@ -1,6 +1,4 @@
-
 #include "common.h"
-
 #include "miniwindows.h"
 
 #define WNDCLASS_NAME "tiny-libretro-frontend"
@@ -20,6 +18,8 @@ LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
 void main(void)
 {
+    InitDebugOutput();
+
     volatile int e;
     HINSTANCE instance = GetModuleHandleA(0);
     WNDCLASSA class = {

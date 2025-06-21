@@ -5,16 +5,14 @@ pushd "%~dp0"
 set cflags=/nologo /options:strict /Wall /wd4711 /wd5045 /wd4820 /Oi /GS- /fp:fast
 set includes=/I %~dp0src
 set lflags=/nodefaultlib
-set cdefs=/D BUILD_DEBUG=1 /D BUILD_DIST=2
+set cdefs=
 
 if "%1"=="dist" (
     set buildtype=%1
     set cflags=%cflags% /O2
-    set cdefs=%cdefs% /D BUILD_TYPE=BUILD_DIST
 ) else if "%1"=="" (
     set buildtype=debug
     set cflags=%cflags% /Z7 /Ob2
-    set cdefs=%cdefs% /D BUILD_TYPE=BUILD_DEBUG
     set lflags=%lflags% /debug
 ) else (
     echo Unknown build type "%1"

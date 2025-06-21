@@ -128,6 +128,8 @@ BOOL WINAPI GetConsoleMode(HANDLE console, DWORD *mode);
 BOOL WINAPI SetConsoleMode(HANDLE console, DWORD mode);
 BOOL WriteConsoleA(HANDLE console, const ptr buffer, DWORD bytes, DWORD *written, ptr _reserved);
 DWORD GetLastError(void);
+void OutputDebugStringA(LPCSTR str);
+BOOL IsDebuggerPresent(void);
 
 /* user32.dll */
 ATOM RegisterClassA(WNDCLASSA *cls);
