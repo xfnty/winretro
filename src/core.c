@@ -74,10 +74,10 @@ typedef i16   (*retro_input_state_t)(u16 port, u16 device, u16 index, u16 id);
     _X(ptr,   retro_get_memory_data,            u16 type) \
     _X(usize, retro_get_memory_size,            u16 type)
 
-typedef struct Core Core;
-struct Core {
+typedef struct CorePrivate CorePrivate;
+struct CorePrivate {
+    Core base;
     HMODULE dll;
-    CoreState state;
     retro_system_info    info;
     retro_system_av_info avinfo;
     struct {
@@ -87,58 +87,57 @@ struct Core {
     } api;
 };
 
-static Core core;
-
-u8 Core_Load(cstr path)
+Core *Core_Load(cstr path)
 {
-    Core_Free();
+    CorePrivate *core = HeapAlloc(
+        GetProcessHeap(),
+        HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
+        sizeof(*core)
+    );
 
-    core.dll = LoadLibraryA(path);
-    if (!core.dll) return false;
+    core->dll = LoadLibraryA(path);
+    if (!core->dll) goto Failure;
 
     struct {
         cstr symbol;
         ptr *func;
     } load_list[] = {
-        #define _X(_ret, _name, _arg1, ...) { #_name, (ptr)&core.api._name },
+        #define _X(_ret, _name, _arg1, ...) { #_name, (ptr)&core->api._name },
         RETRO_API_DECL_LIST
         #undef _X
     };
     for (i32 i = 0; i < countof(load_list); i++)
     {
-        *load_list[i].func = (ptr)GetProcAddress(core.dll, load_list[i].symbol);
+        *load_list[i].func = (ptr)GetProcAddress(core->dll, load_list[i].symbol);
         if (!(*load_list[i].func))
         {
             error("symbol \"%s\" not found", load_list[i].symbol);
-            return false;
+            goto Failure;
         }
     }
 
-    if (core.api.retro_api_version() != 1)
+    if (core->api.retro_api_version() != 1)
     {
         error("surprisingly, given core does not use Libretro API version 1");
-        return false;
+        goto Failure;
     }
 
-    core.api.retro_get_system_info(&core.info);
-    core.api.retro_get_system_av_info(&core.avinfo);
-    core.state = CORE_LOADED;
+    core->api.retro_get_system_info(&core->info);
+    core->api.retro_get_system_av_info(&core->avinfo);
+    core->base.state = CORE_LOADED;
+    core->base.name = core->info.library_name;
+    return (Core*)core;
 
-    return true;
+    Failure:
+    HeapFree(GetProcessHeap(), 0, core);
+    return 0;
 }
 
-void Core_Free(void)
+void Core_Free(Core **core)
 {
-    FreeLibrary(core.dll);
-    RtlZeroMemory(&core, sizeof(core));
-}
-
-cstr Core_GetName(void)
-{
-    return core.info.library_name;
-}
-
-CoreState Core_GetState(void)
-{
-    return core.state;
+    if (!core) return;
+    CorePrivate *p = (CorePrivate*)(*core);
+    FreeLibrary(p->dll);
+    HeapFree(GetProcessHeap(), 0, p);
+    *core = 0;
 }

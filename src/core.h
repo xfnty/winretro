@@ -9,8 +9,11 @@ enum CoreState {
     CORE_PLAYING,
 };
 
-u8   Core_Load(cstr path);
-void Core_Free(void);
+typedef struct Core Core;
+struct Core {
+    CoreState state;
+    cstr name;
+};
 
-cstr Core_GetName(void);
-CoreState Core_GetState(void);
+Core *Core_Load(cstr path);
+void Core_Free(Core **core);

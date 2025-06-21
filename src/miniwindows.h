@@ -14,9 +14,16 @@
 #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004u
 #define WM_CLOSE                           0x0010u
 #define WM_DESTROY                         0x0002u
+#define WM_CREATE                          0x0001u
 #define WS_OVERLAPPEDWINDOW                0x00CF0000L
+#define WS_CHILD                           0x40000000L
+#define TBSTYLE_WRAPABLE                   0x0200
 #define OFN_PATHMUSTEXIST                  0x00000800
 #define OFN_FILEMUSTEXIST                  0x00001000
+#define TOOLBARCLASSNAME                   "ToolbarWindow32"
+#define GWLP_USERDATA                      -21
+#define HEAP_GENERATE_EXCEPTIONS           0x00000004
+#define HEAP_ZERO_MEMORY                   0x00000008
 
 #define WINAPI   __stdcall
 #define CALLBACK __stdcall
@@ -33,6 +40,7 @@ typedef ptr HGDIOBJ;
 typedef ptr HINSTANCE;
 typedef i32 BOOL;
 typedef i64 LRESULT;
+typedef i64 LONG_PTR;
 typedef u32 UINT;
 typedef char *LPSTR;
 typedef const char *LPCSTR;
@@ -132,6 +140,9 @@ DWORD GetLastError(void);
 void OutputDebugStringA(LPCSTR str);
 BOOL IsDebuggerPresent(void);
 void RtlZeroMemory(void *buffer, DWORD64 size);
+ptr WINAPI HeapAlloc(HANDLE heap, DWORD flags, DWORD64 size);
+BOOL HeapFree(HANDLE heap, DWORD flags, ptr data);
+HANDLE GetProcessHeap(void);
 
 /* user32.dll */
 ATOM RegisterClassA(WNDCLASSA *cls);
@@ -156,6 +167,8 @@ BOOL DispatchMessageA(const MSG *msg);
 HCURSOR LoadCursorA(HINSTANCE instance, cstr name);
 LRESULT DefWindowProcA(HWND window, UINT msg, WPARAM wp, LPARAM lp);
 void PostQuitMessage(int code);
+LONG_PTR GetWindowLongPtrA(HWND hwnd, int idx);
+LONG_PTR SetWindowLongPtrA(HWND hwnd, int idx, LONG_PTR ptr);
 
 /* gdi32.dll */
 HGDIOBJ GetStockObject(int id);
