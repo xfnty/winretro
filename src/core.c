@@ -137,6 +137,7 @@ void Core_Free(Core **core)
 {
     if (!core) return;
     CorePrivate *p = (CorePrivate*)(*core);
+    if (!p) return;
     FreeLibrary(p->dll);
     HeapFree(GetProcessHeap(), 0, p);
     *core = 0;

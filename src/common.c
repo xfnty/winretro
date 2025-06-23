@@ -101,6 +101,12 @@ void error(cstr fmt, ...)
     va_end(args);
 }
 
+void die(i32 code)
+{
+    __debugbreak();
+    ExitProcess(code);
+}
+
 u32 format(c8 *buffer, u32 maxsize, cstr fmt, ...)
 {
     va_list args;

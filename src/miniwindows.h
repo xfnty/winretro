@@ -14,21 +14,39 @@
 #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004u
 #define WM_CLOSE                           0x0010u
 #define WM_DESTROY                         0x0002u
+#define WM_SIZE                            0x0005u
 #define WM_CREATE                          0x0001u
+#define WM_USER                            0x0400u
 #define WS_OVERLAPPEDWINDOW                0x00CF0000L
 #define WS_CHILD                           0x40000000L
+#define WS_VISIBLE                         0x10000000L
 #define TBSTYLE_WRAPABLE                   0x0200
 #define OFN_PATHMUSTEXIST                  0x00000800
 #define OFN_FILEMUSTEXIST                  0x00001000
 #define TOOLBARCLASSNAME                   "ToolbarWindow32"
-#define GWLP_USERDATA                      -21
+#define STATUSCLASSNAME                    "msctls_statusbar32"
+#define GWLP_USERDATA                      (-21)
+#define GWL_STYLE                          (-16)
 #define HEAP_GENERATE_EXCEPTIONS           0x00000004
 #define HEAP_ZERO_MEMORY                   0x00000008
+#define ICC_BAR_CLASSES                    0x00000004
+#define ICC_PROGRESS_CLASS                 0x00000020
+#define ICC_STANDARD_CLASSES               0x00000020
+#define SBARS_SIZEGRIP                     0x0100
+#define SBARS_TOOLTIPS                     0x0800
+#define SB_SETTEXTA                        (WM_USER+1)
+#define SB_SETPARTS                        (WM_USER+4)
+#define SBT_NOBORDERS                      0x0100
+#define SBT_POPOUT                         0x0200
+
+#define LOWORD(_x) ((SHORT)(_x))
+#define HIWORD(_x) ((SHORT)((DWORD)(_x) >> sizeof(SHORT)))
 
 #define WINAPI   __stdcall
 #define CALLBACK __stdcall
 #define APIENTRY __stdcall
 
+typedef ptr HDC;
 typedef ptr HWND;
 typedef ptr HICON;
 typedef ptr HMENU;
@@ -47,6 +65,7 @@ typedef const char *LPCSTR;
 typedef LRESULT LPARAM;
 typedef u64 WPARAM;
 typedef u64 UINT_PTR;
+typedef u16 SHORT;
 typedef u32 DWORD;
 typedef u64 DWORD64;
 typedef u16 WORD;
@@ -124,6 +143,26 @@ struct OPENFILENAMEA {
     DWORD         FlagsEx;
 };
 
+typedef struct INITCOMMONCONTROLSEX INITCOMMONCONTROLSEX;
+struct INITCOMMONCONTROLSEX {
+  DWORD dwSize;
+  DWORD dwICC;
+};
+
+typedef struct RECT RECT;
+struct RECT {
+    long left;
+    long top;
+    long right;
+    long bottom;
+};
+
+typedef struct SIZE SIZE;
+struct SIZE {
+    long cx;
+    long cy;
+};
+
 /* kernel32.dll */
 void ExitProcess(UINT code);
 HMODULE GetModuleHandleA(LPCSTR name);
@@ -161,6 +200,7 @@ HWND CreateWindowExA(
     ptr lp
 );
 BOOL ShowWindow(HWND window, int show);
+LRESULT SendMessageA(HWND wnd, UINT msg, WPARAM wp, LPARAM lp);
 BOOL GetMessageA(MSG *msg, HWND window, UINT fmin, UINT fmax);
 BOOL TranslateMessage(const MSG *msg);
 BOOL DispatchMessageA(const MSG *msg);
@@ -169,10 +209,16 @@ LRESULT DefWindowProcA(HWND window, UINT msg, WPARAM wp, LPARAM lp);
 void PostQuitMessage(int code);
 LONG_PTR GetWindowLongPtrA(HWND hwnd, int idx);
 LONG_PTR SetWindowLongPtrA(HWND hwnd, int idx, LONG_PTR ptr);
+BOOL GetClientRect(HWND wnd, RECT *r);
+HDC GetDC(HWND wnd);
 
 /* gdi32.dll */
 HGDIOBJ GetStockObject(int id);
+BOOL GetTextExtentPoint32A(HDC dc, LPCSTR str, int length, SIZE *size);
 
 /* comdlg32.dll */
 BOOL APIENTRY GetOpenFileNameA(OPENFILENAMEA *ofn);
 DWORD CommDlgExtendedError(void);
+
+/* comctl32.dll */
+BOOL InitCommonControlsEx(const INITCOMMONCONTROLSEX *inf);

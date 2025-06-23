@@ -26,6 +26,10 @@ LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_DESTROY:
         PostQuitMessage(0);
         return 1;
+
+    case WM_SIZE:
+        Ui_Resize(LOWORD(lp), HIWORD(lp));
+        break;
     }
 
     return DefWindowProcA(hwnd, msg, wp, lp);
@@ -61,27 +65,27 @@ void main(void)
     );
     assert(app.window);
     SetWindowLongPtrA(app.window, GWLP_USERDATA, (LONG_PTR)&app);
-    Ui_Create(app.window, app.instance);
+    Ui_Init(app.window, app.instance);
     ShowWindow(app.window, SW_SHOW);
 
-    char file[260];
-    OPENFILENAMEA open_dialog = {
-        .lStructSize = sizeof(open_dialog),
-        .hwndOwner = app.window,
-        .lpstrFilter = "Libretro Core (*.dll)\0*.DLL\0All Files (*.*)\0*.*\0",
-        .nFilterIndex = 1,
-        .lpstrFile = file,
-        .nMaxFile = sizeof(file),
-        .Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST,
-    };
-    if (GetOpenFileNameA(&open_dialog) && (app.core = Core_Load(open_dialog.lpstrFile)))
-    {
-        info("core: %s", app.core->name);
-    }
-    else
-    {
-        error("OFN: %x, last error: %d", CommDlgExtendedError(), GetLastError());
-    }
+    // char file[260];
+    // OPENFILENAMEA open_dialog = {
+    //     .lStructSize = sizeof(open_dialog),
+    //     .hwndOwner = app.window,
+    //     .lpstrFilter = "Libretro Core (*.dll)\0*.DLL\0All Files (*.*)\0*.*\0",
+    //     .nFilterIndex = 1,
+    //     .lpstrFile = file,
+    //     .nMaxFile = sizeof(file),
+    //     .Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST,
+    // };
+    // if (GetOpenFileNameA(&open_dialog) && (app.core = Core_Load(open_dialog.lpstrFile)))
+    // {
+    //     info("core: %s", app.core->name);
+    // }
+    // else
+    // {
+    //     error("OFN: %x, last error: %d", CommDlgExtendedError(), GetLastError());
+    // }
 
     for (MSG msg; GetMessageA(&msg, 0, 0, 0) != 0;)
     {

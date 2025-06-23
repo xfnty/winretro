@@ -45,6 +45,7 @@ void InitDebugOutput(void);
 
 void info(cstr format, ...);
 void error(cstr format, ...);
+void die(i32 code);
 
 u32 format(c8 *buffer, u32 maxsize, cstr fmt, ...);
 u32 formatv(c8 *buffer, u32 maxsize, cstr fmt, va_list args);

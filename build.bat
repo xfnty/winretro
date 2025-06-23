@@ -19,7 +19,7 @@ if "%debug%"=="1" set "buildtype=debug"
 set "src=%~dp0src\"
 set "out=%~dp0out\%buildtype%\"
 set "tmp=%~dp0out\.temp\%buildtype%\"
-set "libraries=kernel32 user32 comdlg32 gdi32"
+set "libraries=kernel32 user32 comdlg32 comctl32 gdi32"
 set unity=%tmp%unity.c
 set "exe=%out%frontend.exe"
 
