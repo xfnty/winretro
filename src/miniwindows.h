@@ -8,6 +8,7 @@
 #define CW_USEDEFAULT                      0x80000000
 #define SW_HIDE                            0
 #define SW_SHOW                            5
+#define SW_SHOWNORMAL                      1
 #define INVALID_HANDLE_VALUE               (ptr)-1
 #define ATTACH_PARENT_PROCESS              (u32)-1
 #define STD_OUTPUT_HANDLE                  (u32)-11
@@ -20,9 +21,11 @@
 #define WS_OVERLAPPEDWINDOW                0x00CF0000L
 #define WS_CHILD                           0x40000000L
 #define WS_VISIBLE                         0x10000000L
-#define TBSTYLE_WRAPABLE                   0x0200
+#define WM_MENUCOMMAND                     0x0126
+#define WM_COMMAND                         0x0111
 #define OFN_PATHMUSTEXIST                  0x00000800
 #define OFN_FILEMUSTEXIST                  0x00001000
+#define OFN_OVERWRITEPROMPT                0x00000002
 #define TOOLBARCLASSNAME                   "ToolbarWindow32"
 #define STATUSCLASSNAME                    "msctls_statusbar32"
 #define GWLP_USERDATA                      (-21)
@@ -38,6 +41,12 @@
 #define SB_SETPARTS                        (WM_USER+4)
 #define SBT_NOBORDERS                      0x0100
 #define SBT_POPOUT                         0x0200
+#define PM_NOREMOVE                        0x0000u
+#define PM_REMOVE                          0x0001u
+#define MF_POPUP                           0x00000010L
+#define MF_ENABLED                         0x00000000L
+#define MF_DISABLED                        0x00000002L
+#define MF_BYCOMMAND                       0x00000000L
 
 #define LOWORD(_x) ((SHORT)(_x))
 #define HIWORD(_x) ((SHORT)((DWORD)(_x) >> sizeof(SHORT)))
@@ -52,6 +61,7 @@ typedef ptr HICON;
 typedef ptr HMENU;
 typedef ptr HANDLE;
 typedef ptr HBRUSH;
+typedef ptr HBITMAP;
 typedef ptr HCURSOR;
 typedef ptr HMODULE;
 typedef ptr HGDIOBJ;
@@ -59,11 +69,15 @@ typedef ptr HINSTANCE;
 typedef i32 BOOL;
 typedef i64 LRESULT;
 typedef i64 LONG_PTR;
+typedef u64 ULONG_PTR;
+typedef u64 DWORD_PTR;
 typedef u32 UINT;
 typedef char *LPSTR;
 typedef const char *LPCSTR;
 typedef LRESULT LPARAM;
 typedef u64 WPARAM;
+typedef u8  BYTE;
+typedef i64 INT_PTR;
 typedef u64 UINT_PTR;
 typedef u16 SHORT;
 typedef u32 DWORD;
@@ -163,6 +177,24 @@ struct SIZE {
     long cy;
 };
 
+typedef struct SECURITY_ATTRIBUTES SECURITY_ATTRIBUTES;
+struct SECURITY_ATTRIBUTES {
+    DWORD nLength;
+    ptr   lpSecurityDescriptor;
+    BOOL  bInheritHandle;
+};
+
+typedef struct TBBUTTON TBBUTTON;
+struct TBBUTTON {
+    int iBitmap;
+    int idCommand;
+    BYTE fsState;
+    BYTE fsStyle;
+    BYTE bReserved[6]; // padding
+    DWORD_PTR dwData;
+    INT_PTR iString;
+};
+
 /* kernel32.dll */
 void ExitProcess(UINT code);
 HMODULE GetModuleHandleA(LPCSTR name);
@@ -179,6 +211,7 @@ DWORD GetLastError(void);
 void OutputDebugStringA(LPCSTR str);
 BOOL IsDebuggerPresent(void);
 void RtlZeroMemory(void *buffer, DWORD64 size);
+void RtlCopyMemory(ptr dst, const ptr src, DWORD64 size);
 ptr WINAPI HeapAlloc(HANDLE heap, DWORD flags, DWORD64 size);
 BOOL HeapFree(HANDLE heap, DWORD flags, ptr data);
 HANDLE GetProcessHeap(void);
@@ -202,6 +235,7 @@ HWND CreateWindowExA(
 BOOL ShowWindow(HWND window, int show);
 LRESULT SendMessageA(HWND wnd, UINT msg, WPARAM wp, LPARAM lp);
 BOOL GetMessageA(MSG *msg, HWND window, UINT fmin, UINT fmax);
+BOOL PeekMessageA(MSG *msg, HWND window, UINT fmin, UINT fmax, UINT flags);
 BOOL TranslateMessage(const MSG *msg);
 BOOL DispatchMessageA(const MSG *msg);
 HCURSOR LoadCursorA(HINSTANCE instance, cstr name);
@@ -211,6 +245,12 @@ LONG_PTR GetWindowLongPtrA(HWND hwnd, int idx);
 LONG_PTR SetWindowLongPtrA(HWND hwnd, int idx, LONG_PTR ptr);
 BOOL GetClientRect(HWND wnd, RECT *r);
 HDC GetDC(HWND wnd);
+BOOL DestroyWindow(HWND window);
+BOOL UnregisterClassA(LPCSTR cls, HINSTANCE instance);
+HMENU CreateMenu(void);
+BOOL SetMenu(HWND window, HMENU menu);
+BOOL AppendMenuA(HMENU menu, UINT flags, UINT_PTR item, LPCSTR str);
+BOOL ModifyMenuA(HMENU menu, UINT id, UINT flags, UINT_PTR item, LPCSTR str);
 
 /* gdi32.dll */
 HGDIOBJ GetStockObject(int id);
@@ -218,7 +258,11 @@ BOOL GetTextExtentPoint32A(HDC dc, LPCSTR str, int length, SIZE *size);
 
 /* comdlg32.dll */
 BOOL APIENTRY GetOpenFileNameA(OPENFILENAMEA *ofn);
+BOOL APIENTRY GetSaveFileNameA(OPENFILENAMEA *ofn);
 DWORD CommDlgExtendedError(void);
 
 /* comctl32.dll */
 BOOL InitCommonControlsEx(const INITCOMMONCONTROLSEX *inf);
+
+/* shell32.dll */
+HINSTANCE ShellExecuteA(HWND window, LPCSTR op, LPCSTR file, LPCSTR params, LPCSTR dir, i32 show);

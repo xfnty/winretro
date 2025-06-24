@@ -1,5 +1,6 @@
 #include "core.h"
 
+#include "logger.h"
 #include "miniwindows.h"
 
 typedef struct retro_system_info retro_system_info;
@@ -77,6 +78,7 @@ typedef i16   (*retro_input_state_t)(u16 port, u16 device, u16 index, u16 id);
 typedef struct CorePrivate CorePrivate;
 struct CorePrivate {
     Core base;
+    Logger *logger;
     HMODULE dll;
     retro_system_info    info;
     retro_system_av_info avinfo;
@@ -87,7 +89,7 @@ struct CorePrivate {
     } api;
 };
 
-Core *Core_Load(cstr path)
+Core *CreateCore(cstr path)
 {
     CorePrivate *core = HeapAlloc(
         GetProcessHeap(),
@@ -95,8 +97,9 @@ Core *Core_Load(cstr path)
         sizeof(*core)
     );
 
+    core->logger = CreateLogger((LoggerParams){ .name = "core" });
     core->dll = LoadLibraryA(path);
-    if (!core->dll) goto Failure;
+    if (!core->logger || !core->dll) goto Failure;
 
     struct {
         cstr symbol;
@@ -111,33 +114,33 @@ Core *Core_Load(cstr path)
         *load_list[i].func = (ptr)GetProcAddress(core->dll, load_list[i].symbol);
         if (!(*load_list[i].func))
         {
-            error("symbol \"%s\" not found", load_list[i].symbol);
+            LogError(core->logger, "symbol \"%s\" not found", load_list[i].symbol);
             goto Failure;
         }
     }
 
     if (core->api.retro_api_version() != 1)
     {
-        error("surprisingly, given core does not use Libretro API version 1");
+        LogError(core->logger, "surprisingly, given core does not use Libretro API version 1");
         goto Failure;
     }
 
     core->api.retro_get_system_info(&core->info);
     core->api.retro_get_system_av_info(&core->avinfo);
-    core->base.state = CORE_LOADED;
     core->base.name = core->info.library_name;
     return (Core*)core;
 
     Failure:
-    HeapFree(GetProcessHeap(), 0, core);
+    FreeCore((Core**)&core);
     return 0;
 }
 
-void Core_Free(Core **core)
+void FreeCore(Core **core)
 {
     if (!core) return;
     CorePrivate *p = (CorePrivate*)(*core);
     if (!p) return;
+    FreeLogger(&p->logger);
     FreeLibrary(p->dll);
     HeapFree(GetProcessHeap(), 0, p);
     *core = 0;

@@ -41,10 +41,6 @@ void __cdecl __va_start(va_list* , ...);
     )
 #define va_end(_list) ((void)(_list = (va_list)0));
 
-void InitDebugOutput(void);
-
-void info(cstr format, ...);
-void error(cstr format, ...);
 void die(i32 code);
 
 u32 format(c8 *buffer, u32 maxsize, cstr fmt, ...);
