@@ -113,7 +113,7 @@ Ui *CreateUi(UiParams params)
     assert(SetMenu(ui->window, ui->menu));
 
     Ui_SetState((Ui*)ui, UI_INITIAL);
-    
+
     ShowWindow(ui->window, SW_SHOW);
 
     return (Ui*)ui;
@@ -307,7 +307,7 @@ u8 OpenFileDialog(UiPrivate *uip, u8 save, cstr title, cstr filename, cstr exten
         .nFilterIndex = 1,
         .lpstrFile = uip->dialog_path,
         .nMaxFile = sizeof(uip->dialog_path),
-        .Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST,
+        .Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | ((save) ? (OFN_OVERWRITEPROMPT) : (0)),
     };
 
     return (u8)((save) ? (GetSaveFileNameA(&info)) : (GetOpenFileNameA(&info)));
