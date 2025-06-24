@@ -53,6 +53,19 @@ Ui *CreateUi(UiParams params)
     ui->logger = CreateLogger((LoggerParams){ .name = "ui" });
     assert(ui->logger);
 
+    HMENU sysmenu = CreateMenu();
+    assert(AppendMenuA(sysmenu, 0, MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR));
+    assert(AppendMenuA(sysmenu, 0, MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR));
+    assert(AppendMenuA(sysmenu, 0, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR));
+    assert(AppendMenuA(sysmenu, 0, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR));
+    assert(AppendMenuA(sysmenu, MF_SEPARATOR, 0, 0));
+    assert(AppendMenuA(sysmenu, 0, MENU_SYS_EXIT, "Exit"));
+    HMENU helpmenu = CreateMenu();
+    assert(AppendMenuA(helpmenu, 0, MENU_HELP_WEBSITE, "Project website"));
+    ui->menu = CreateMenu();
+    assert(AppendMenuA(ui->menu, MF_POPUP, (UINT_PTR)sysmenu, "System"));
+    assert(AppendMenuA(ui->menu, MF_POPUP, (UINT_PTR)helpmenu, "Help"));
+
     ui->instance = GetModuleHandleA(0);
     WNDCLASSA class = {
         .style = CS_OWNDC,
@@ -60,7 +73,7 @@ Ui *CreateUi(UiParams params)
         .lpszClassName = WNDCLASS_NAME,
         .lpfnWndProc = WindowEventHandler,
         .hCursor = LoadCursorA(0, IDC_ARROW),
-        .hbrBackground = GetStockObject(WHITE_BRUSH),
+        .hbrBackground = GetStockObject(BLACK_BRUSH),
     };
     assert(RegisterClassA(&class));
     ui->window = CreateWindowExA(
@@ -71,7 +84,7 @@ Ui *CreateUi(UiParams params)
         CW_USEDEFAULT, CW_USEDEFAULT,
         CW_USEDEFAULT, CW_USEDEFAULT,
         0,
-        0,
+        ui->menu,
         ui->instance,
         0
     );
@@ -79,8 +92,8 @@ Ui *CreateUi(UiParams params)
     SetWindowLongPtrA(ui->window, GWLP_USERDATA, (LONG_PTR)ui);
 
     INITCOMMONCONTROLSEX inf = {
-    .dwSize = sizeof(inf),
-    .dwICC = ICC_STANDARD_CLASSES | ICC_BAR_CLASSES | ICC_PROGRESS_CLASS,
+        .dwSize = sizeof(inf),
+        .dwICC = ICC_STANDARD_CLASSES | ICC_BAR_CLASSES | ICC_PROGRESS_CLASS,
     };
     assert(InitCommonControlsEx(&inf));
 
@@ -97,20 +110,6 @@ Ui *CreateUi(UiParams params)
     );
     assert(ui->statusbar);
     SendMessageA(ui->statusbar, SB_SETPARTS, 1, (LPARAM)(i32[]){ -1 });
-
-    HMENU sysmenu = CreateMenu();
-    assert(AppendMenuA(sysmenu, 0, MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR));
-    assert(AppendMenuA(sysmenu, 0, MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR));
-    assert(AppendMenuA(sysmenu, 0, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR));
-    assert(AppendMenuA(sysmenu, 0, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR));
-    assert(AppendMenuA(sysmenu, 0x00000800L, 0, 0));
-    assert(AppendMenuA(sysmenu, 0, MENU_SYS_EXIT, "Exit"));
-    HMENU helpmenu = CreateMenu();
-    assert(AppendMenuA(helpmenu, 0, MENU_HELP_WEBSITE, "Project website"));
-    ui->menu = CreateMenu();
-    assert(AppendMenuA(ui->menu, MF_POPUP, (UINT_PTR)sysmenu, "System"));
-    assert(AppendMenuA(ui->menu, MF_POPUP, (UINT_PTR)helpmenu, "Help"));
-    assert(SetMenu(ui->window, ui->menu));
 
     Ui_SetState((Ui*)ui, UI_INITIAL);
 

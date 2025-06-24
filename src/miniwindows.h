@@ -4,6 +4,7 @@
 
 #define IDC_ARROW                          ((cstr)32512)
 #define WHITE_BRUSH                        0
+#define BLACK_BRUSH                        4
 #define CS_OWNDC                           0x0020
 #define CW_USEDEFAULT                      0x80000000
 #define SW_HIDE                            0
@@ -47,6 +48,7 @@
 #define MF_ENABLED                         0x00000000L
 #define MF_DISABLED                        0x00000002L
 #define MF_BYCOMMAND                       0x00000000L
+#define MF_SEPARATOR                       0x00000800L
 
 #define LOWORD(_x) ((SHORT)(_x))
 #define HIWORD(_x) ((SHORT)((DWORD)(_x) >> sizeof(SHORT)))
