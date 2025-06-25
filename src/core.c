@@ -87,51 +87,53 @@ struct CorePrivate {
         RETRO_API_DECL_LIST
         #undef _X
     } api;
+    f32 inputs[_CORE_AXIS_COUNT];
 };
 
 Core *CreateCore(cstr path)
 {
-    CorePrivate *core = HeapAlloc(
+    CorePrivate *corep = HeapAlloc(
         GetProcessHeap(),
         HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
-        sizeof(*core)
+        sizeof(*corep)
     );
 
-    core->logger = CreateLogger((LoggerParams){ .name = "core" });
-    core->dll = LoadLibraryA(path);
-    if (!core->logger || !core->dll) goto Failure;
+    corep->logger = CreateLogger((LoggerParams){ .name = "core" });
+    corep->dll = LoadLibraryA(path);
+    if (!corep->logger || !corep->dll) goto Failure;
 
     struct {
         cstr symbol;
         ptr *func;
     } load_list[] = {
-        #define _X(_ret, _name, _arg1, ...) { #_name, (ptr)&core->api._name },
+        #define _X(_ret, _name, _arg1, ...) { #_name, (ptr)&corep->api._name },
         RETRO_API_DECL_LIST
         #undef _X
     };
     for (i32 i = 0; i < countof(load_list); i++)
     {
-        *load_list[i].func = (ptr)GetProcAddress(core->dll, load_list[i].symbol);
+        *load_list[i].func = (ptr)GetProcAddress(corep->dll, load_list[i].symbol);
         if (!(*load_list[i].func))
         {
-            LogError(core->logger, "symbol \"%s\" not found", load_list[i].symbol);
+            LogError(corep->logger, "symbol \"%s\" not found", load_list[i].symbol);
             goto Failure;
         }
     }
 
-    if (core->api.retro_api_version() != 1)
+    if (corep->api.retro_api_version() != 1)
     {
-        LogError(core->logger, "surprisingly, given core does not use Libretro API version 1");
+        LogError(corep->logger, "surprisingly, given core does not use Libretro API version 1");
         goto Failure;
     }
 
-    core->api.retro_get_system_info(&core->info);
-    core->api.retro_get_system_av_info(&core->avinfo);
-    core->base.name = core->info.library_name;
-    return (Core*)core;
+    corep->api.retro_get_system_info(&corep->info);
+    corep->api.retro_get_system_av_info(&corep->avinfo);
+    corep->base.name = corep->info.library_name;
+    LogInfo(corep->logger, "loaded \"%s\"", corep->base.name);
+    return (Core*)corep;
 
     Failure:
-    FreeCore((Core**)&core);
+    FreeCore((Core**)&corep);
     return 0;
 }
 
@@ -144,4 +146,18 @@ void FreeCore(Core **core)
     FreeLibrary(p->dll);
     HeapFree(GetProcessHeap(), 0, p);
     *core = 0;
+}
+
+void Core_SetInput(Core *core, CoreInputAxisState input)
+{
+    CorePrivate *corep = (CorePrivate*)core;
+    assert(corep);
+    assert((u32)input.axis < _CORE_AXIS_COUNT);
+
+    if (corep->inputs[input.axis] != input.value)
+    {
+        LogInfo(corep->logger, "input %d %d", (i32)input.axis, (i32)input.value);
+    }
+
+    corep->inputs[input.axis] = input.value;
 }

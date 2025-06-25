@@ -17,12 +17,10 @@ Logger *CreateLogger(LoggerParams params)
     );
 
     logger->base.params = params;
+    assert(params.name);
 
-    logger->stdout = INVALID_HANDLE_VALUE;
-    if (AttachConsole(ATTACH_PARENT_PROCESS))
-    {
-        logger->stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    }
+    AttachConsole(ATTACH_PARENT_PROCESS);
+    logger->stdout = GetStdHandle(STD_OUTPUT_HANDLE);
 
     return (Logger*)logger;
 }
@@ -50,13 +48,15 @@ void LogInfo(Logger *logger, cstr fmt, ...)
 {
     assert(logger);
 
+    LoggerPrivate *loggerp = (LoggerPrivate*)logger;
+
     char buffer[1024];
     va_list args;
     va_start(args, fmt);
-    u32 len = FormatMessage(buffer, sizeof(buffer), logger->params.name, "", fmt, args);
+    u32 len = FormatMessage(buffer, sizeof(buffer), loggerp->base.params.name, "", fmt, args);
     va_end(args);
 
-    WriteConsoleA(((LoggerPrivate*)logger)->stdout, buffer, len, 0, 0);
+    WriteConsoleA(loggerp->stdout, buffer, len, 0, 0);
     OutputDebugStringA(buffer);
 }
 

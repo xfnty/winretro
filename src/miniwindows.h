@@ -24,6 +24,8 @@
 #define WS_VISIBLE                         0x10000000L
 #define WM_MENUCOMMAND                     0x0126
 #define WM_COMMAND                         0x0111
+#define WM_KEYDOWN                         0x0100
+#define WM_KEYUP                           0x0101
 #define OFN_PATHMUSTEXIST                  0x00000800
 #define OFN_FILEMUSTEXIST                  0x00001000
 #define OFN_OVERWRITEPROMPT                0x00000002

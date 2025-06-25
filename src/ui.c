@@ -22,7 +22,8 @@ enum {
 typedef struct UiPrivate UiPrivate;
 struct UiPrivate {
     Ui base;
-    UiState state;
+    cstr core;
+    cstr rom;
     Logger *logger;
     HWND window;
     HWND statusbar;
@@ -34,6 +35,7 @@ struct UiPrivate {
         u32 head;
         u32 count;
     } events;
+    DWORD bindings[_CORE_AXIS_COUNT];
 };
 
 static DWORD WINAPI WindowThreadProc(Ui *ui);
@@ -43,15 +45,27 @@ static u8 OpenFileDialog(UiPrivate *uip, u8 save, cstr title, cstr filename, cst
 
 Ui *CreateUi(UiParams params)
 {
-    UiPrivate *ui = HeapAlloc(
+    UiPrivate *uip = HeapAlloc(
         GetProcessHeap(),
         HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
-        sizeof(*ui)
+        sizeof(*uip)
     );
 
-    ui->base.params = params;
-    ui->logger = CreateLogger((LoggerParams){ .name = "ui" });
-    assert(ui->logger);
+    uip->base.params = params;
+    uip->logger = CreateLogger((LoggerParams){ .name = "ui" });
+    assert(uip->logger);
+    uip->bindings[CORE_AXIS_START] = 0x0D;
+    uip->bindings[CORE_AXIS_SELECT] = ' ';
+    uip->bindings[CORE_AXIS_LEFT] = 'A';
+    uip->bindings[CORE_AXIS_RIGHT] = 'D';
+    uip->bindings[CORE_AXIS_UP] = 'W';
+    uip->bindings[CORE_AXIS_DOWN] = 'S';
+    uip->bindings[CORE_AXIS_A] = 'K';
+    uip->bindings[CORE_AXIS_B] = 'L';
+    uip->bindings[CORE_AXIS_X] = 'I';
+    uip->bindings[CORE_AXIS_Y] = 'O';
+    uip->bindings[CORE_AXIS_L] = 'Q';
+    uip->bindings[CORE_AXIS_R] = 'E';
 
     HMENU sysmenu = CreateMenu();
     assert(AppendMenuA(sysmenu, 0, MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR));
@@ -62,21 +76,21 @@ Ui *CreateUi(UiParams params)
     assert(AppendMenuA(sysmenu, 0, MENU_SYS_EXIT, "Exit"));
     HMENU helpmenu = CreateMenu();
     assert(AppendMenuA(helpmenu, 0, MENU_HELP_WEBSITE, "Project website"));
-    ui->menu = CreateMenu();
-    assert(AppendMenuA(ui->menu, MF_POPUP, (UINT_PTR)sysmenu, "System"));
-    assert(AppendMenuA(ui->menu, MF_POPUP, (UINT_PTR)helpmenu, "Help"));
+    uip->menu = CreateMenu();
+    assert(AppendMenuA(uip->menu, MF_POPUP, (UINT_PTR)sysmenu, "System"));
+    assert(AppendMenuA(uip->menu, MF_POPUP, (UINT_PTR)helpmenu, "Help"));
 
-    ui->instance = GetModuleHandleA(0);
+    uip->instance = GetModuleHandleA(0);
     WNDCLASSA class = {
         .style = CS_OWNDC,
-        .hInstance = ui->instance,
+        .hInstance = uip->instance,
         .lpszClassName = WNDCLASS_NAME,
         .lpfnWndProc = WindowEventHandler,
         .hCursor = LoadCursorA(0, IDC_ARROW),
         .hbrBackground = GetStockObject(BLACK_BRUSH),
     };
     assert(RegisterClassA(&class));
-    ui->window = CreateWindowExA(
+    uip->window = CreateWindowExA(
         0,
         WNDCLASS_NAME,
         params.title,
@@ -84,12 +98,12 @@ Ui *CreateUi(UiParams params)
         CW_USEDEFAULT, CW_USEDEFAULT,
         CW_USEDEFAULT, CW_USEDEFAULT,
         0,
-        ui->menu,
-        ui->instance,
+        uip->menu,
+        uip->instance,
         0
     );
-    assert(ui->window);
-    SetWindowLongPtrA(ui->window, GWLP_USERDATA, (LONG_PTR)ui);
+    assert(uip->window);
+    SetWindowLongPtrA(uip->window, GWLP_USERDATA, (LONG_PTR)uip);
 
     INITCOMMONCONTROLSEX inf = {
         .dwSize = sizeof(inf),
@@ -97,25 +111,25 @@ Ui *CreateUi(UiParams params)
     };
     assert(InitCommonControlsEx(&inf));
 
-    ui->statusbar = CreateWindowExA(
+    uip->statusbar = CreateWindowExA(
         0,
         STATUSCLASSNAME,
         0,
         WS_CHILD | WS_VISIBLE,
         0, 0, 0, 0,
-        ui->window,
+        uip->window,
         0,
-        ui->instance,
+        uip->instance,
         0
     );
-    assert(ui->statusbar);
-    SendMessageA(ui->statusbar, SB_SETPARTS, 1, (LPARAM)(i32[]){ -1 });
+    assert(uip->statusbar);
+    SendMessageA(uip->statusbar, SB_SETPARTS, 1, (LPARAM)(i32[]){ -1 });
 
-    Ui_SetState((Ui*)ui, UI_INITIAL);
-
-    ShowWindow(ui->window, SW_SHOW);
-
-    return (Ui*)ui;
+    Ui_SetCoreLoaded((Ui*)uip, 0);
+    Ui_SetRomLoaded((Ui*)uip, 0);
+    
+    ShowWindow(uip->window, SW_SHOW);
+    return (Ui*)uip;
 }
 
 void FreeUi(Ui **ui)
@@ -150,43 +164,53 @@ u8 Ui_GetEvent(Ui *ui, UiEvent *event)
     return 1;
 }
 
-void Ui_SetCoreName(Ui *ui, cstr name)
+void Ui_SetCoreLoaded(Ui *ui, cstr name)
 {
+    assert(ui);
+
     UiPrivate *uip = (UiPrivate*)ui;
-    assert(uip);
+    uip->core = name;
 
-    SendMessageA(uip->statusbar, SB_SETTEXTA, 0 | SBT_NOBORDERS, (LPARAM)name);
-}
-
-void Ui_SetState(Ui *ui, UiState state)
-{
-    UiPrivate *uip = (UiPrivate*)ui;
-    assert(uip);
-
-    uip->state = state;
-
-    switch (state)
+    if (uip->core)
     {
-    case UI_INITIAL:
-        ModifyMenuA(uip->menu, MENU_SYS_OPEN_CORE,  MF_ENABLED,  MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_OPEN_ROM,   MF_DISABLED, MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_LOAD_STATE, MF_DISABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_SAVE_STATE, MF_DISABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
-        break;
-
-    case UI_CORE_LOADED:
         ModifyMenuA(uip->menu, MENU_SYS_OPEN_CORE,  MF_ENABLED,  MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
         ModifyMenuA(uip->menu, MENU_SYS_OPEN_ROM,   MF_ENABLED,  MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
         ModifyMenuA(uip->menu, MENU_SYS_LOAD_STATE, MF_DISABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
         ModifyMenuA(uip->menu, MENU_SYS_SAVE_STATE, MF_DISABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
-        break;
+    }
+    else
+    {
+        ModifyMenuA(uip->menu, MENU_SYS_OPEN_CORE,  MF_ENABLED,  MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
+        ModifyMenuA(uip->menu, MENU_SYS_OPEN_ROM,   MF_DISABLED, MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
+        ModifyMenuA(uip->menu, MENU_SYS_LOAD_STATE, MF_DISABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
+        ModifyMenuA(uip->menu, MENU_SYS_SAVE_STATE, MF_DISABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
+    }
 
-    case UI_GAMEPLAY:
+    SendMessageA(uip->statusbar, SB_SETTEXTA, 0 | SBT_NOBORDERS, (LPARAM)uip->core);
+}
+
+void Ui_SetRomLoaded(Ui *ui, cstr name)
+{
+    assert(ui);
+
+    UiPrivate *uip = (UiPrivate*)ui;
+
+    if (name)
+    {
+        if (!uip->core)
+        {
+            LogError(uip->logger, "attempted to set ROM name to \"%s\" when Core is empty", name);
+            return;
+        }
+
         ModifyMenuA(uip->menu, MENU_SYS_OPEN_CORE,  MF_ENABLED, MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
         ModifyMenuA(uip->menu, MENU_SYS_OPEN_ROM,   MF_ENABLED, MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
         ModifyMenuA(uip->menu, MENU_SYS_LOAD_STATE, MF_ENABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
         ModifyMenuA(uip->menu, MENU_SYS_SAVE_STATE, MF_ENABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
-        break;
+    }
+    else
+    {
+        Ui_SetCoreLoaded(ui, uip->core);
     }
 }
 
@@ -266,6 +290,27 @@ LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             if (err <= 32)
             {
                 LogError(uip->logger, "ShellExecuteA() failed (%d)", (i32)err);
+            }
+        }
+        break;
+
+    case WM_KEYUP:
+    case WM_KEYDOWN:
+        for (i32 i = 0; i < countof(uip->bindings); i++)
+        {
+            if (uip->bindings[i] == wp)
+            {
+                EnqueueEvent(
+                    uip,
+                    (UiEvent){ 
+                        .type = UI_INPUT,
+                        .value.input = (CoreInputAxisState){
+                            (CoreInputAxis)i,
+                            (f32)(msg == WM_KEYDOWN)
+                        } 
+                    }
+                );
+                break;
             }
         }
         break;

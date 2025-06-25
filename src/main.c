@@ -31,17 +31,23 @@ void main(void)
 
                 case UI_OPEN_ROM:
                     LogInfo(logger, "open rom \"%s\"", e.value.path);
-                    Ui_SetState(ui, UI_GAMEPLAY);
+                    Ui_SetRomLoaded(ui, e.value.path);
                     break;
 
                 case UI_OPEN_CORE:
                     LogInfo(logger, "open core \"%s\"", e.value.path);
-                    core = CreateCore(e.value.path);
-                    if (core)
+                    Core *new_core = CreateCore(e.value.path);
+                    if (new_core)
                     {
-                        Ui_SetCoreName(ui, core->name);
-                        Ui_SetState(ui, UI_CORE_LOADED);
+                        FreeCore(&core);
+                        core = new_core;
+                        Ui_SetCoreLoaded(ui, core->name);
+                        Ui_SetRomLoaded(ui, 0);
                     }
+                    break;
+
+                case UI_INPUT:
+                    if (core) Core_SetInput(core, e.value.input);
                     break;
             }
         }
