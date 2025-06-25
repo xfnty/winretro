@@ -37,4 +37,5 @@ struct CoreInputAxisState {
 Core *CreateCore(cstr path);
 void FreeCore(Core **core);
 
+u8   Core_SetRom(Core *core, cstr path);
 void Core_SetInput(Core *core, CoreInputAxisState input);

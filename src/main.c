@@ -31,7 +31,10 @@ void main(void)
 
                 case UI_OPEN_ROM:
                     LogInfo(logger, "open rom \"%s\"", e.value.path);
-                    Ui_SetRomLoaded(ui, e.value.path);
+                    if (core && Core_SetRom(core, e.value.path))
+                    {
+                        Ui_SetRomLoaded(ui, e.value.path);
+                    }
                     break;
 
                 case UI_OPEN_CORE:

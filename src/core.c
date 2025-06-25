@@ -148,6 +148,18 @@ void FreeCore(Core **core)
     *core = 0;
 }
 
+u8 Core_SetRom(Core *core, cstr path)
+{
+    CorePrivate *corep = (CorePrivate*)core;
+    assert(corep);
+    assert(path);
+
+    retro_game_info info = {
+        .path = path
+    };
+    return corep->api.retro_load_game(&info);
+}
+
 void Core_SetInput(Core *core, CoreInputAxisState input)
 {
     CorePrivate *corep = (CorePrivate*)core;
