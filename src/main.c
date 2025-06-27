@@ -1,19 +1,18 @@
 #include "ui.h"
+#include "log.h"
 #include "core.h"
-#include "logger.h"
 #include "miniwindows.h"
 
 void main(void)
 {
-    Logger *logger = CreateLogger((LoggerParams){ .name = "main" });
-    Core *core = 0;
-    Ui *ui = CreateUi((UiParams){ .title = "Libretro Frontend" });
+    InitLog();
+    InitUi((UiParams){ .title = "Libretro Frontend" });
 
     for (u8 running = true; running; )
     {
-        Ui_ProcessEvents(ui);
+        Ui_ProcessEvents();
 
-        for (UiEvent e; Ui_GetEvent(ui, &e); )
+        for (UiEvent e; Ui_GetEvent(&e); )
         {
             switch (e.type)
             {
@@ -22,42 +21,33 @@ void main(void)
                     break;
 
                 case UI_LOAD_STATE:
-                    LogInfo(logger, "load state \"%s\"", e.value.path);
                     break;
 
                 case UI_SAVE_STATE:
-                    LogInfo(logger, "save state \"%s\"", e.value.path);
                     break;
 
                 case UI_OPEN_ROM:
-                    LogInfo(logger, "open rom \"%s\"", e.value.path);
-                    if (core && Core_SetRom(core, e.value.path))
+                    if (Core_SetRom(e.value.path))
                     {
-                        Ui_SetRomLoaded(ui, e.value.path);
+                        Ui_SetRomLoaded(e.value.path);
                     }
                     break;
 
                 case UI_OPEN_CORE:
-                    LogInfo(logger, "open core \"%s\"", e.value.path);
-                    Core *new_core = CreateCore(e.value.path);
-                    if (new_core)
+                    if (Core_Load(e.value.path))
                     {
-                        FreeCore(&core);
-                        core = new_core;
-                        Ui_SetCoreLoaded(ui, core->name);
-                        Ui_SetRomLoaded(ui, 0);
+                        Ui_SetCoreLoaded(Core_GetName());
+                        Ui_SetRomLoaded(0);
                     }
                     break;
 
                 case UI_INPUT:
-                    if (core) Core_SetInput(core, e.value.input);
+                    Core_SetInput(e.value.input);
                     break;
             }
         }
     }
 
-    FreeUi(&ui);
-    FreeCore(&core);
-    FreeLogger(&logger);
+    FreeUi();
     ExitProcess(0);
 }

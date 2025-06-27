@@ -1,6 +1,6 @@
 #include "ui.h"
 
-#include "logger.h"
+#include "log.h"
 #include "miniwindows.h"
 
 #define WNDCLASS_NAME "libretro-frontend"
@@ -19,12 +19,10 @@ enum {
     MENU_HELP_WEBSITE,
 };
 
-typedef struct UiPrivate UiPrivate;
-struct UiPrivate {
-    Ui base;
+static struct {
+    UiParams params;
     cstr core;
     cstr rom;
-    Logger *logger;
     HWND window;
     HWND statusbar;
     HMENU menu;
@@ -36,36 +34,29 @@ struct UiPrivate {
         u32 count;
     } events;
     DWORD bindings[_CORE_AXIS_COUNT];
-};
+} s_ui;
 
-static DWORD WINAPI WindowThreadProc(Ui *ui);
 LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
-static void EnqueueEvent(UiPrivate *uip, UiEvent event);
-static u8 OpenFileDialog(UiPrivate *uip, u8 save, cstr title, cstr filename, cstr extensions);
+static void EnqueueEvent(UiEvent event);
+static u8 OpenFileDialog(u8 save, cstr title, cstr filename, cstr extensions);
 
-Ui *CreateUi(UiParams params)
+void InitUi(UiParams params)
 {
-    UiPrivate *uip = HeapAlloc(
-        GetProcessHeap(),
-        HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
-        sizeof(*uip)
-    );
+    FreeUi();
 
-    uip->base.params = params;
-    uip->logger = CreateLogger((LoggerParams){ .name = "ui" });
-    assert(uip->logger);
-    uip->bindings[CORE_AXIS_START] = 0x0D;
-    uip->bindings[CORE_AXIS_SELECT] = ' ';
-    uip->bindings[CORE_AXIS_LEFT] = 'A';
-    uip->bindings[CORE_AXIS_RIGHT] = 'D';
-    uip->bindings[CORE_AXIS_UP] = 'W';
-    uip->bindings[CORE_AXIS_DOWN] = 'S';
-    uip->bindings[CORE_AXIS_A] = 'K';
-    uip->bindings[CORE_AXIS_B] = 'L';
-    uip->bindings[CORE_AXIS_X] = 'I';
-    uip->bindings[CORE_AXIS_Y] = 'O';
-    uip->bindings[CORE_AXIS_L] = 'Q';
-    uip->bindings[CORE_AXIS_R] = 'E';
+    s_ui.params = params;
+    s_ui.bindings[CORE_AXIS_START] = 0x0D;
+    s_ui.bindings[CORE_AXIS_SELECT] = ' ';
+    s_ui.bindings[CORE_AXIS_LEFT] = 'A';
+    s_ui.bindings[CORE_AXIS_RIGHT] = 'D';
+    s_ui.bindings[CORE_AXIS_UP] = 'W';
+    s_ui.bindings[CORE_AXIS_DOWN] = 'S';
+    s_ui.bindings[CORE_AXIS_A] = 'K';
+    s_ui.bindings[CORE_AXIS_B] = 'L';
+    s_ui.bindings[CORE_AXIS_X] = 'I';
+    s_ui.bindings[CORE_AXIS_Y] = 'O';
+    s_ui.bindings[CORE_AXIS_L] = 'Q';
+    s_ui.bindings[CORE_AXIS_R] = 'E';
 
     HMENU sysmenu = CreateMenu();
     assert(AppendMenuA(sysmenu, 0, MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR));
@@ -76,34 +67,33 @@ Ui *CreateUi(UiParams params)
     assert(AppendMenuA(sysmenu, 0, MENU_SYS_EXIT, "Exit"));
     HMENU helpmenu = CreateMenu();
     assert(AppendMenuA(helpmenu, 0, MENU_HELP_WEBSITE, "Project website"));
-    uip->menu = CreateMenu();
-    assert(AppendMenuA(uip->menu, MF_POPUP, (UINT_PTR)sysmenu, "System"));
-    assert(AppendMenuA(uip->menu, MF_POPUP, (UINT_PTR)helpmenu, "Help"));
+    s_ui.menu = CreateMenu();
+    assert(AppendMenuA(s_ui.menu, MF_POPUP, (UINT_PTR)sysmenu, "System"));
+    assert(AppendMenuA(s_ui.menu, MF_POPUP, (UINT_PTR)helpmenu, "Help"));
 
-    uip->instance = GetModuleHandleA(0);
+    s_ui.instance = GetModuleHandleA(0);
     WNDCLASSA class = {
         .style = CS_OWNDC,
-        .hInstance = uip->instance,
+        .hInstance = s_ui.instance,
         .lpszClassName = WNDCLASS_NAME,
         .lpfnWndProc = WindowEventHandler,
         .hCursor = LoadCursorA(0, IDC_ARROW),
         .hbrBackground = GetStockObject(BLACK_BRUSH),
     };
     assert(RegisterClassA(&class));
-    uip->window = CreateWindowExA(
+    s_ui.window = CreateWindowExA(
         0,
         WNDCLASS_NAME,
-        params.title,
+        s_ui.params.title,
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
         CW_USEDEFAULT, CW_USEDEFAULT,
         0,
-        uip->menu,
-        uip->instance,
+        s_ui.menu,
+        s_ui.instance,
         0
     );
-    assert(uip->window);
-    SetWindowLongPtrA(uip->window, GWLP_USERDATA, (LONG_PTR)uip);
+    assert(s_ui.window);
 
     INITCOMMONCONTROLSEX inf = {
         .dwSize = sizeof(inf),
@@ -111,113 +101,100 @@ Ui *CreateUi(UiParams params)
     };
     assert(InitCommonControlsEx(&inf));
 
-    uip->statusbar = CreateWindowExA(
+    s_ui.statusbar = CreateWindowExA(
         0,
         STATUSCLASSNAME,
         0,
         WS_CHILD | WS_VISIBLE,
         0, 0, 0, 0,
-        uip->window,
+        s_ui.window,
         0,
-        uip->instance,
+        s_ui.instance,
         0
     );
-    assert(uip->statusbar);
-    SendMessageA(uip->statusbar, SB_SETPARTS, 1, (LPARAM)(i32[]){ -1 });
+    assert(s_ui.statusbar);
+    SendMessageA(s_ui.statusbar, SB_SETPARTS, 1, (LPARAM)(i32[]){ -1 });
 
-    Ui_SetCoreLoaded((Ui*)uip, 0);
-    Ui_SetRomLoaded((Ui*)uip, 0);
+    Ui_SetCoreLoaded(0);
+    Ui_SetRomLoaded(0);
     
-    ShowWindow(uip->window, SW_SHOW);
-    return (Ui*)uip;
+    ShowWindow(s_ui.window, SW_SHOW);
 }
 
-void FreeUi(Ui **ui)
+void FreeUi(void)
 {
-    assert(ui);
-    DestroyWindow(((UiPrivate*)*ui)->window);
-    UnregisterClassA(WNDCLASS_NAME, ((UiPrivate*)*ui)->instance);
-    HeapFree(GetProcessHeap(), 0, *ui);
-    *ui = 0;
+    DestroyWindow(s_ui.window);
+    UnregisterClassA(WNDCLASS_NAME, s_ui.instance);
+    RtlZeroMemory(&s_ui, sizeof(s_ui));
 }
 
-void Ui_ProcessEvents(Ui *ui)
+void Ui_ProcessEvents(void)
 {
-    for (MSG msg; PeekMessageA(&msg, ((UiPrivate*)ui)->window, 0, 0, PM_REMOVE) != 0;)
+    for (MSG msg; PeekMessageA(&msg, s_ui.window, 0, 0, PM_REMOVE) != 0;)
     {
         TranslateMessage(&msg);
         DispatchMessageA(&msg);
     }
 }
 
-u8 Ui_GetEvent(Ui *ui, UiEvent *event)
+u8 Ui_GetEvent(UiEvent *event)
 {
-    assert(ui);
     assert(event);
 
-    UiPrivate *uip = (UiPrivate*)ui;
+    if (!s_ui.events.count)
+        return false;
 
-    if (!uip->events.count) return 0;
-
-    *event = uip->events.array[(uip->events.head++) % countof(uip->events.array)];
-    uip->events.count--;
-    return 1;
+    *event = s_ui.events.array[(s_ui.events.head++) % countof(s_ui.events.array)];
+    s_ui.events.count--;
+    return true;
 }
 
-void Ui_SetCoreLoaded(Ui *ui, cstr name)
+void Ui_SetCoreLoaded(cstr name)
 {
-    assert(ui);
+    s_ui.core = name;
 
-    UiPrivate *uip = (UiPrivate*)ui;
-    uip->core = name;
-
-    if (uip->core)
+    if (s_ui.core)
     {
-        ModifyMenuA(uip->menu, MENU_SYS_OPEN_CORE,  MF_ENABLED,  MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_OPEN_ROM,   MF_ENABLED,  MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_LOAD_STATE, MF_DISABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_SAVE_STATE, MF_DISABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_OPEN_CORE,  MF_ENABLED,  MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_OPEN_ROM,   MF_ENABLED,  MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_LOAD_STATE, MF_DISABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_SAVE_STATE, MF_DISABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
     }
     else
     {
-        ModifyMenuA(uip->menu, MENU_SYS_OPEN_CORE,  MF_ENABLED,  MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_OPEN_ROM,   MF_DISABLED, MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_LOAD_STATE, MF_DISABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_SAVE_STATE, MF_DISABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_OPEN_CORE,  MF_ENABLED,  MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_OPEN_ROM,   MF_DISABLED, MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_LOAD_STATE, MF_DISABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_SAVE_STATE, MF_DISABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
     }
 
-    SendMessageA(uip->statusbar, SB_SETTEXTA, 0 | SBT_NOBORDERS, (LPARAM)uip->core);
+    SendMessageA(s_ui.statusbar, SB_SETTEXTA, 0 | SBT_NOBORDERS, (LPARAM)s_ui.core);
 }
 
-void Ui_SetRomLoaded(Ui *ui, cstr name)
+void Ui_SetRomLoaded(cstr name)
 {
-    assert(ui);
-
-    UiPrivate *uip = (UiPrivate*)ui;
-
     if (name)
     {
-        if (!uip->core)
+        if (!s_ui.core)
         {
-            LogError(uip->logger, "attempted to set ROM name to \"%s\" when Core is empty", name);
+            LogMessage(LOG_ERROR, "attempted to set ROM name to \"%s\" when Core is empty", name);
             return;
         }
 
-        ModifyMenuA(uip->menu, MENU_SYS_OPEN_CORE,  MF_ENABLED, MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_OPEN_ROM,   MF_ENABLED, MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_LOAD_STATE, MF_ENABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
-        ModifyMenuA(uip->menu, MENU_SYS_SAVE_STATE, MF_ENABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_OPEN_CORE,  MF_ENABLED, MENU_SYS_OPEN_CORE,  MENU_OPEN_CORE_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_OPEN_ROM,   MF_ENABLED, MENU_SYS_OPEN_ROM,   MENU_OPEN_ROM_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_LOAD_STATE, MF_ENABLED, MENU_SYS_LOAD_STATE, MENU_LOAD_STATE_STR);
+        ModifyMenuA(s_ui.menu, MENU_SYS_SAVE_STATE, MF_ENABLED, MENU_SYS_SAVE_STATE, MENU_SAVE_STATE_STR);
     }
     else
     {
-        Ui_SetCoreLoaded(ui, uip->core);
+        Ui_SetCoreLoaded(s_ui.core);
     }
 }
 
 LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
-    UiPrivate *uip = (UiPrivate*)GetWindowLongPtrA(hwnd, GWLP_USERDATA);
-    if (!uip || uip->window != hwnd)
+    if (s_ui.window != hwnd)
     {
         return DefWindowProcA(hwnd, msg, wp, lp);
     }
@@ -225,83 +202,101 @@ LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     switch (msg)
     {
     case WM_CLOSE:
-    case WM_DESTROY:
-        EnqueueEvent(uip, (UiEvent){ .type = UI_EXIT });
+        LogMessage(LOG_INFO, "exit requested");
+        EnqueueEvent((UiEvent){ .type = UI_EXIT });
         return 1;
 
     case WM_SIZE:
-        SendMessageA(uip->statusbar, WM_SIZE, 0, 0);
+        SendMessageA(s_ui.statusbar, WM_SIZE, 0, 0);
         break;
 
     case WM_COMMAND:
-        i32 cmd = LOWORD(wp);
-        if (cmd == MENU_SYS_EXIT)
         {
-            SendMessageA(uip->window, WM_CLOSE, 0, 0);
-        }
-        else if (cmd == MENU_SYS_OPEN_CORE)
-        {
-            if (OpenFileDialog(uip, false, MENU_OPEN_CORE_STR, 0, "Libretro Core (*.dll)\0*.DLL\0"))
+            i32 cmd = LOWORD(wp);
+            switch (cmd)
             {
-                EnqueueEvent(uip, (UiEvent){ .type = UI_OPEN_CORE, .value.path = uip->dialog_path });
-            }
-        }
-        else if (cmd == MENU_SYS_OPEN_ROM)
-        {
-            if (
-                OpenFileDialog(
-                    uip,
-                    false,
-                    MENU_OPEN_ROM_STR,
-                    0,
-                    "Game Rom (*.chd)\0*.CHD\0"
-                    "Game Rom (*.bin)\0*.BIN\0"
-                    "All Files (*.*)\0*.*\0"
-                )
-            )
-            {
-                EnqueueEvent(uip, (UiEvent){ .type = UI_OPEN_ROM, .value.path = uip->dialog_path });
-            }
-        }
-        else if (cmd == MENU_SYS_LOAD_STATE)
-        {
-            if (OpenFileDialog(uip, false, MENU_LOAD_STATE_STR, 0, "Game State (*.bin)\0*.BIN\0All Files (*.*)\0*.*\0"))
-            {
-                EnqueueEvent(uip, (UiEvent){ .type = UI_LOAD_STATE, .value.path = uip->dialog_path });
-            }
-        }
-        else if (cmd == MENU_SYS_SAVE_STATE)
-        {
-            if (OpenFileDialog(uip, true, MENU_SAVE_STATE_STR, "save.bin", "Game State (*.bin)\0*.BIN\0All Files (*.*)\0*.*\0"))
-            {
-                EnqueueEvent(uip, (UiEvent){ .type = UI_SAVE_STATE, .value.path = uip->dialog_path });
-            }
-        }
-        else if (cmd == MENU_HELP_WEBSITE)
-        {
-            INT_PTR err = (INT_PTR)ShellExecuteA(
-                0,
-                "open",
-                "https://github.com/xfnty/tiny-libretro-frontend",
-                0,
-                0,
-                SW_SHOWNORMAL
-            );
-            if (err <= 32)
-            {
-                LogError(uip->logger, "ShellExecuteA() failed (%d)", (i32)err);
+            case MENU_SYS_EXIT:
+                {
+                    SendMessageA(s_ui.window, WM_CLOSE, 0, 0);
+                }
+                break;
+
+            case MENU_SYS_OPEN_CORE:
+                {
+                    if (OpenFileDialog(false, MENU_OPEN_CORE_STR, 0, "Libretro Core (*.dll)\0*.DLL\0"))
+                    {
+                        LogMessage(LOG_INFO, "load core from \"%s\"", s_ui.dialog_path);
+                        EnqueueEvent((UiEvent){ .type = UI_OPEN_CORE, .value.path = s_ui.dialog_path });
+                    }
+                }
+                break;
+
+            case MENU_SYS_OPEN_ROM:
+                {
+                    if (
+                        OpenFileDialog(
+                            false,
+                            MENU_OPEN_ROM_STR,
+                            0,
+                            "Game Rom (*.chd)\0*.CHD\0"
+                            "Game Rom (*.bin)\0*.BIN\0"
+                            "All Files (*.*)\0*.*\0"
+                        )
+                    )
+                    {
+                        LogMessage(LOG_INFO, "load ROM from \"%s\"", s_ui.dialog_path);
+                        EnqueueEvent((UiEvent){ .type = UI_OPEN_ROM, .value.path = s_ui.dialog_path });
+                    }
+                }
+                break;
+
+            case MENU_SYS_LOAD_STATE:
+                {
+                    if (OpenFileDialog(false, MENU_LOAD_STATE_STR, 0, "Game State (*.bin)\0*.BIN\0All Files (*.*)\0*.*\0"))
+                    {
+                        LogMessage(LOG_INFO, "load state from \"%s\"", s_ui.dialog_path);
+                        EnqueueEvent((UiEvent){ .type = UI_LOAD_STATE, .value.path = s_ui.dialog_path });
+                    }
+                }
+                break;
+
+            case MENU_SYS_SAVE_STATE:
+                {
+                    if (OpenFileDialog(true, MENU_SAVE_STATE_STR, "save.bin", "Game State (*.bin)\0*.BIN\0All Files (*.*)\0*.*\0"))
+                    {
+                        LogMessage(LOG_INFO, "save state to \"%s\"", s_ui.dialog_path);
+                        EnqueueEvent((UiEvent){ .type = UI_SAVE_STATE, .value.path = s_ui.dialog_path });
+                    }
+                }
+                break;
+
+            case MENU_HELP_WEBSITE:
+                {
+                    INT_PTR err = (INT_PTR)ShellExecuteA(
+                        0,
+                        "open",
+                        "https://github.com/xfnty/tiny-libretro-frontend",
+                        0,
+                        0,
+                        SW_SHOWNORMAL
+                    );
+                    if (err <= 32)
+                    {
+                        LogMessage(LOG_ERROR, "ShellExecuteA() failed (%d)", (i32)err);
+                    }
+                }
+                break;
             }
         }
         break;
 
     case WM_KEYUP:
     case WM_KEYDOWN:
-        for (i32 i = 0; i < countof(uip->bindings); i++)
+        for (i32 i = 0; i < countof(s_ui.bindings); i++)
         {
-            if (uip->bindings[i] == wp)
+            if (s_ui.bindings[i] == wp)
             {
                 EnqueueEvent(
-                    uip,
                     (UiEvent){ 
                         .type = UI_INPUT,
                         .value.input = (CoreInputAxisState){
@@ -319,38 +314,35 @@ LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     return DefWindowProcA(hwnd, msg, wp, lp);
 }
 
-void EnqueueEvent(UiPrivate *uip, UiEvent event)
+void EnqueueEvent(UiEvent event)
 {
-    assert(uip);
-    assert(uip->events.count + 1 <= countof(uip->events.array));
+    assert(s_ui.events.count + 1 <= countof(s_ui.events.array));
 
-    uip->events.array[(uip->events.head + (uip->events.count++)) % countof(uip->events.array)]
+    s_ui.events.array[(s_ui.events.head + (s_ui.events.count++)) % countof(s_ui.events.array)]
         = event;
 }
 
-u8 OpenFileDialog(UiPrivate *uip, u8 save, cstr title, cstr filename, cstr extensions)
+u8 OpenFileDialog(u8 save, cstr title, cstr filename, cstr extensions)
 {
-    assert(uip);
-
     if (filename)
     {
         u32 len = 0;
         for (; filename[len]; len++);
-        RtlCopyMemory(uip->dialog_path, "save.bin", len + 1);
+        RtlCopyMemory(s_ui.dialog_path, "save.bin", len + 1);
     }
     else
     {
-        RtlZeroMemory(uip->dialog_path, sizeof(uip->dialog_path));
+        RtlZeroMemory(s_ui.dialog_path, sizeof(s_ui.dialog_path));
     }
 
     OPENFILENAMEA info = {
         .lStructSize = sizeof(info),
         .lpstrTitle = title,
-        .hwndOwner = uip->window,
+        .hwndOwner = s_ui.window,
         .lpstrFilter = extensions,
         .nFilterIndex = 1,
-        .lpstrFile = uip->dialog_path,
-        .nMaxFile = sizeof(uip->dialog_path),
+        .lpstrFile = s_ui.dialog_path,
+        .nMaxFile = sizeof(s_ui.dialog_path),
         .Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | ((save) ? (OFN_OVERWRITEPROMPT) : (0)),
     };
 

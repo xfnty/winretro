@@ -2,11 +2,6 @@
 
 #include "common.h"
 
-typedef struct Core Core;
-struct Core {
-    cstr name;
-};
-
 typedef enum CoreInputAxis CoreInputAxis;
 enum CoreInputAxis {
     CORE_AXIS_B = 0,
@@ -34,8 +29,10 @@ struct CoreInputAxisState {
     f32 value;
 };
 
-Core *CreateCore(cstr path);
-void FreeCore(Core **core);
+u8   Core_Load(cstr path);
+void Core_Free(void);
 
-u8   Core_SetRom(Core *core, cstr path);
-void Core_SetInput(Core *core, CoreInputAxisState input);
+cstr Core_GetName(void);
+
+u8 Core_SetRom(cstr path);
+u8 Core_SetInput(CoreInputAxisState input);

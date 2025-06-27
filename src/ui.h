@@ -8,11 +8,6 @@ struct UiParams {
     cstr title;
 };
 
-typedef struct Ui Ui;
-struct Ui {
-    UiParams params;
-};
-
 typedef enum UiEventType UiEventType;
 enum UiEventType {
     UI_EXIT,
@@ -32,11 +27,11 @@ struct UiEvent {
     } value;
 };
 
-Ui *CreateUi(UiParams params);
-void FreeUi(Ui **ui);
+void InitUi(UiParams params);
+void FreeUi(void);
 
-void Ui_ProcessEvents(Ui *ui);
-u8 Ui_GetEvent(Ui *ui, UiEvent *event);
+void Ui_ProcessEvents(void);
+u8 Ui_GetEvent(UiEvent *event);
 
-void Ui_SetCoreLoaded(Ui *ui, cstr name);
-void Ui_SetRomLoaded(Ui *ui, cstr name);
+void Ui_SetCoreLoaded(cstr name);
+void Ui_SetRomLoaded(cstr name);

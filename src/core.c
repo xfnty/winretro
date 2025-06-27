@@ -1,7 +1,12 @@
 #include "core.h"
 
-#include "logger.h"
+#include "log.h"
 #include "miniwindows.h"
+
+#define RETRO_NUM_CORE_OPTION_VALUES_MAX 128
+#define RETRO_ENVIRONMENT_EXPERIMENTAL 0x10000
+#define RETRO_ENVIRONMENT_PRIVATE 0x20000
+#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE 27
 
 typedef struct retro_system_info retro_system_info;
 struct retro_system_info {
@@ -14,10 +19,10 @@ struct retro_system_info {
 
 typedef struct retro_game_geometry retro_game_geometry;
 struct retro_game_geometry {
-    u16 base_width;
-    u16 base_height;
-    u16 max_width;
-    u16 max_height;
+    u32 base_width;
+    u32 base_height;
+    u32 max_width;
+    u32 max_height;
     f32 aspect_ratio;
 };
 
@@ -41,12 +46,26 @@ struct retro_game_info {
     cstr  meta;
 };
 
-typedef u8    (*retro_environment_t)(u16 cmd, ptr data);
-typedef void  (*retro_video_callback_t)(const ptr data, u16 width, u16 height, usize pitch);
+typedef enum retro_log_level retro_log_level;
+enum retro_log_level {
+   RETRO_LOG_DEBUG = 0,
+   RETRO_LOG_INFO,
+   RETRO_LOG_WARN,
+   RETRO_LOG_ERROR,
+};
+
+typedef void  (*retro_log_printf_t)(retro_log_level level, const char *fmt, ...);
+typedef u8    (*retro_environment_t)(u32 cmd, ptr data);
+typedef void  (*retro_video_callback_t)(const ptr data, u32 width, u32 height, usize pitch);
 typedef void  (*retro_audio_sample_t)(i16 left, i16 right);
 typedef usize (*retro_audio_sample_batch_t)(const i16 *data, usize frames);
 typedef void  (*retro_input_poll_t)(void);
-typedef i16   (*retro_input_state_t)(u16 port, u16 device, u16 index, u16 id);
+typedef i16   (*retro_input_state_t)(u32 port, u32 device, u32 index, u32 id);
+
+typedef struct retro_log_callback retro_log_callback;
+struct retro_log_callback {
+   retro_log_printf_t log;
+};
 
 #define RETRO_API_DECL_LIST \
     _X(void,  retro_set_environment,            retro_environment_t callback) \
@@ -57,28 +76,25 @@ typedef i16   (*retro_input_state_t)(u16 port, u16 device, u16 index, u16 id);
     _X(void,  retro_set_input_state,            retro_input_state_t callback) \
     _X(void,  retro_init,                       void) \
     _X(void,  retro_deinit,                     void) \
-    _X(u16,   retro_api_version,                void) \
+    _X(u32,   retro_api_version,                void) \
     _X(void,  retro_get_system_info,            retro_system_info* info) \
     _X(void,  retro_get_system_av_info,         retro_system_av_info* avinfo) \
-    _X(void,  retro_set_controller_port_device, u16 port, u16 device) \
+    _X(void,  retro_set_controller_port_device, u32 port, u32 device) \
     _X(void,  retro_reset,                      void) \
     _X(void,  retro_run,                        void) \
     _X(usize, retro_serialize_size,             void) \
     _X(u8,    retro_serialize,                  ptr data, usize len) \
     _X(u8,    retro_unserialize,                const ptr data, usize len) \
     _X(void,  retro_cheat_reset,                void) \
-    _X(void,  retro_cheat_set,                  u16 index, u8 enabled, cstr code) \
+    _X(void,  retro_cheat_set,                  u32 index, u8 enabled, cstr code) \
     _X(u8,    retro_load_game,                  const retro_game_info *info) \
-    _X(u8,    retro_load_game_special,          u16 type, const retro_game_info *info, usize count) \
+    _X(u8,    retro_load_game_special,          u32 type, const retro_game_info *info, usize count) \
     _X(void,  retro_unload_game,                void) \
-    _X(u16,   retro_get_region,                 void) \
-    _X(ptr,   retro_get_memory_data,            u16 type) \
-    _X(usize, retro_get_memory_size,            u16 type)
+    _X(u32,   retro_get_region,                 void) \
+    _X(ptr,   retro_get_memory_data,            u32 type) \
+    _X(usize, retro_get_memory_size,            u32 type)
 
-typedef struct CorePrivate CorePrivate;
-struct CorePrivate {
-    Core base;
-    Logger *logger;
+static struct {
     HMODULE dll;
     retro_system_info    info;
     retro_system_av_info avinfo;
@@ -88,88 +104,175 @@ struct CorePrivate {
         #undef _X
     } api;
     f32 inputs[_CORE_AXIS_COUNT];
-};
+} s_core;
 
-Core *CreateCore(cstr path)
+static void  LogCallback(retro_log_level level, const char *format, ...);
+static u8    EnvironmentCallback(u32 cmd, ptr data);
+static void  VideoCallback(const ptr data, u32 width, u32 height, usize pitch);
+static void  AudioSampleCallback(i16 left, i16 right);
+static usize AudioBatchCallback(const i16 *data, usize frames);
+static void  InputPollCallback(void);
+static i16   InputStateCallback(u32 port, u32 device, u32 index, u32 id);
+
+u8 Core_Load(cstr path)
 {
-    CorePrivate *corep = HeapAlloc(
-        GetProcessHeap(),
-        HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
-        sizeof(*corep)
-    );
+    assert(path);
 
-    corep->logger = CreateLogger((LoggerParams){ .name = "core" });
-    corep->dll = LoadLibraryA(path);
-    if (!corep->logger || !corep->dll) goto Failure;
+    Core_Free();
+
+    if (!(s_core.dll = LoadLibraryA(path)))
+    {
+        LogMessage(LOG_ERROR, "LoadLibraryA() failed (%d)", GetLastError());
+        goto Failure;
+    }
 
     struct {
         cstr symbol;
         ptr *func;
     } load_list[] = {
-        #define _X(_ret, _name, _arg1, ...) { #_name, (ptr)&corep->api._name },
+        #define _X(_ret, _name, _arg1, ...) { #_name, (ptr)&s_core.api._name },
         RETRO_API_DECL_LIST
         #undef _X
     };
     for (i32 i = 0; i < countof(load_list); i++)
     {
-        *load_list[i].func = (ptr)GetProcAddress(corep->dll, load_list[i].symbol);
+        *load_list[i].func = (ptr)GetProcAddress(s_core.dll, load_list[i].symbol);
         if (!(*load_list[i].func))
         {
-            LogError(corep->logger, "symbol \"%s\" not found", load_list[i].symbol);
+            LogMessage(LOG_ERROR, "symbol \"%s\" not found", load_list[i].symbol);
             goto Failure;
         }
     }
 
-    if (corep->api.retro_api_version() != 1)
+    if (s_core.api.retro_api_version() != 1)
     {
-        LogError(corep->logger, "surprisingly, given core does not use Libretro API version 1");
+        LogMessage(LOG_ERROR, "surprisingly, given core does not use Libretro API version 1");
         goto Failure;
     }
 
-    corep->api.retro_get_system_info(&corep->info);
-    corep->api.retro_get_system_av_info(&corep->avinfo);
-    corep->base.name = corep->info.library_name;
-    LogInfo(corep->logger, "loaded \"%s\"", corep->base.name);
-    return (Core*)corep;
+    s_core.api.retro_get_system_info(&s_core.info);
+    s_core.api.retro_get_system_av_info(&s_core.avinfo);
+
+    s_core.api.retro_set_environment(EnvironmentCallback);
+    s_core.api.retro_set_video_refresh(VideoCallback);
+    s_core.api.retro_set_audio_sample(AudioSampleCallback);
+    s_core.api.retro_set_audio_sample_batch(AudioBatchCallback);
+    s_core.api.retro_set_input_poll(InputPollCallback);
+    s_core.api.retro_set_input_state(InputStateCallback);
+
+    LogMessage(LOG_ERROR, "loaded %s %s", s_core.info.library_name, s_core.info.library_version);
+    return true;
 
     Failure:
-    FreeCore((Core**)&corep);
-    return 0;
+    LogMessage(LOG_ERROR, "failed to load \"%s\"", path);
+    Core_Free();
+    return false;
 }
 
-void FreeCore(Core **core)
+void Core_Free(void)
 {
-    if (!core) return;
-    CorePrivate *p = (CorePrivate*)(*core);
-    if (!p) return;
-    FreeLogger(&p->logger);
-    FreeLibrary(p->dll);
-    HeapFree(GetProcessHeap(), 0, p);
-    *core = 0;
+    FreeLibrary(s_core.dll);
+    RtlZeroMemory(&s_core, sizeof(s_core));
 }
 
-u8 Core_SetRom(Core *core, cstr path)
+cstr Core_GetName(void)
 {
-    CorePrivate *corep = (CorePrivate*)core;
-    assert(corep);
+    return s_core.info.library_name;
+}
+
+u8 Core_SetRom(cstr path)
+{
     assert(path);
+    
+    if (!s_core.dll) return false;
 
     retro_game_info info = {
         .path = path
     };
-    return corep->api.retro_load_game(&info);
+    return s_core.api.retro_load_game(&info);
 }
 
-void Core_SetInput(Core *core, CoreInputAxisState input)
+u8 Core_SetInput(CoreInputAxisState input)
 {
-    CorePrivate *corep = (CorePrivate*)core;
-    assert(corep);
     assert((u32)input.axis < _CORE_AXIS_COUNT);
 
-    if (corep->inputs[input.axis] != input.value)
+    if (!s_core.dll) return false;
+
+    if (s_core.inputs[input.axis] != input.value)
     {
-        LogInfo(corep->logger, "input %d %d", (i32)input.axis, (i32)input.value);
+        LogMessage(LOG_INFO, "input %d %d", (i32)input.axis, (i32)input.value);
     }
 
-    corep->inputs[input.axis] = input.value;
+    s_core.inputs[input.axis] = input.value;
+    return true;
+}
+
+void LogCallback(retro_log_level level, const char *format, ...)
+{
+    (void)level;
+    assert(s_core.dll);
+
+    char buffer[1024];
+    va_list args;
+    va_start(args, format);
+    formatv(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    LogMessage(LOG_INFO, buffer);
+}
+
+u8 EnvironmentCallback(u32 cmd, ptr data)
+{
+    assert(s_core.dll);
+
+    if (cmd & (RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE))
+    {
+        return false;
+    }
+
+    switch (cmd)
+    {
+    case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
+        {
+            ((retro_log_callback*)data)->log = LogCallback;
+            return true;
+        }
+    }
+
+    LogMessage(LOG_INFO, "ignored unknown core command %d", (i32)cmd);
+    return false;
+}
+
+void VideoCallback(const ptr data, u32 width, u32 height, usize pitch)
+{
+    (void)data;
+    (void)width;
+    (void)height;
+    (void)pitch;
+}
+
+void AudioSampleCallback(i16 left, i16 right)
+{
+    (void)left;
+    (void)right;
+}
+
+usize AudioBatchCallback(const i16 *data, usize frames)
+{
+    (void)data;
+    (void)frames;
+    return 0;
+}
+
+void InputPollCallback(void)
+{
+}
+
+i16 InputStateCallback(u32 port, u32 device, u32 index, u32 id)
+{
+    (void)port;
+    (void)device;
+    (void)index;
+    (void)id;
+    return 0;
 }

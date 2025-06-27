@@ -19,6 +19,13 @@ u32 format(c8 *buffer, u32 maxsize, cstr fmt, ...)
 
 static u32 format_str(c8 *buffer, u32 maxsize, cstr v)
 {
+    if (!v)
+    {
+        if (maxsize < 6) return 0;
+        RtlCopyMemory(buffer, "(null)", 6);
+        return 6;
+    }
+
     assert(buffer);
     u32 bi = 0;
     while (bi < maxsize && *v) buffer[bi++] = *(v++);
