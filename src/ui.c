@@ -4,6 +4,7 @@
 #include "miniwindows.h"
 
 #define WNDCLASS_NAME "libretro-frontend"
+#define PRESENT_WNDCLASS_NAME "libretro-frontend-present-window"
 
 #define MENU_OPEN_CORE_STR   "Open Core"
 #define MENU_OPEN_ROM_STR    "Open ROM"
@@ -23,10 +24,14 @@ static struct {
     UiParams params;
     cstr core;
     cstr rom;
+    HDC dc;
+    HGLRC gl;
     HWND window;
+    HWND present_window;
     HWND statusbar;
     HMENU menu;
     HINSTANCE instance;
+    RECT present_rect;
     char dialog_path[260];
     struct {
         UiEvent array[64];
@@ -73,12 +78,10 @@ void InitUi(UiParams params)
 
     s_ui.instance = GetModuleHandleA(0);
     WNDCLASSA class = {
-        .style = CS_OWNDC,
         .hInstance = s_ui.instance,
         .lpszClassName = WNDCLASS_NAME,
         .lpfnWndProc = WindowEventHandler,
         .hCursor = LoadCursorA(0, IDC_ARROW),
-        .hbrBackground = GetStockObject(BLACK_BRUSH),
     };
     assert(RegisterClassA(&class));
     s_ui.window = CreateWindowExA(
@@ -94,6 +97,61 @@ void InitUi(UiParams params)
         0
     );
     assert(s_ui.window);
+    WNDCLASSA present_class = {
+        .style = CS_OWNDC,
+        .hInstance = s_ui.instance,
+        .lpszClassName = PRESENT_WNDCLASS_NAME,
+        .lpfnWndProc = DefWindowProcA,
+        .hCursor = LoadCursorA(0, IDC_ARROW),
+        // .hbrBackground = GetStockObject(BLACK_BRUSH),
+    };
+    assert(RegisterClassA(&present_class));
+    s_ui.present_window = CreateWindowExA(
+        0,
+        PRESENT_WNDCLASS_NAME,
+        "",
+        WS_CHILD | WS_VISIBLE,
+        0, 0, 0, 0,
+        s_ui.window,
+        0,
+        s_ui.instance,
+        0
+    );
+    assert(s_ui.present_window);
+
+    s_ui.dc = GetDC(s_ui.present_window);
+    assert(s_ui.dc);
+    PIXELFORMATDESCRIPTOR pfd = {0};
+    pfd.nSize = sizeof(pfd);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.iLayerType = PFD_MAIN_PLANE;
+    int pixel_format = ChoosePixelFormat(s_ui.dc, &pfd);
+    assert(DescribePixelFormat(s_ui.dc, pixel_format, sizeof(pfd), &pfd));
+    assert(SetPixelFormat(s_ui.dc, pixel_format, &pfd));
+    HGLRC tmp_gl = wglCreateContext(s_ui.dc);
+    assert(tmp_gl);
+    assert(wglMakeCurrent(s_ui.dc, tmp_gl));
+    PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB
+        = (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress("wglCreateContextAttribsARB");
+    assert(wglCreateContextAttribsARB);
+    PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT
+        = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
+    assert(wglSwapIntervalEXT);
+    assert(wglMakeCurrent(0, 0));
+    assert(wglDeleteContext(tmp_gl));
+    s_ui.gl = wglCreateContextAttribsARB(s_ui.dc, 0, (i32[]){
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
+        0
+    });
+    assert(s_ui.gl);
+    assert(wglMakeCurrent(s_ui.dc, s_ui.gl));
+    assert(wglSwapIntervalEXT(1));
+    LogMessage(LOG_INFO, "using %s on %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
 
     INITCOMMONCONTROLSEX inf = {
         .dwSize = sizeof(inf),
@@ -192,6 +250,16 @@ void Ui_SetRomLoaded(cstr name)
     }
 }
 
+void Ui_PresentFrame(void)
+{
+    static f32 i = 0;
+    i += 1;
+    if (i > 100) i = 0;
+    glClearColor(i / 100.0f, i / 100.0f, i / 100.0f, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    SwapBuffers(s_ui.dc);
+}
+
 LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
     if (s_ui.window != hwnd)
@@ -202,12 +270,39 @@ LRESULT CALLBACK WindowEventHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     switch (msg)
     {
     case WM_CLOSE:
+        ShowWindow(s_ui.window, SW_HIDE);
         LogMessage(LOG_INFO, "exit requested");
         EnqueueEvent((UiEvent){ .type = UI_EXIT });
         return 1;
 
     case WM_SIZE:
         SendMessageA(s_ui.statusbar, WM_SIZE, 0, 0);
+        RECT wr, sbr;
+        assert(GetClientRect(s_ui.window, &wr));
+        assert(GetClientRect(s_ui.statusbar, &sbr));
+        s_ui.present_rect = (RECT){
+            0, 0, wr.right, wr.bottom - sbr.bottom,
+        };
+        assert(
+            SetWindowPos(
+                s_ui.present_window,
+                HWND_TOP,
+                s_ui.present_rect.left,
+                s_ui.present_rect.top,
+                s_ui.present_rect.right,
+                s_ui.present_rect.bottom,
+                0
+            )
+        );
+        glViewport(
+            s_ui.present_rect.left,
+            s_ui.present_rect.top,
+            s_ui.present_rect.right,
+            s_ui.present_rect.bottom
+        );
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        SwapBuffers(s_ui.dc);
         break;
 
     case WM_COMMAND:
@@ -328,7 +423,7 @@ u8 OpenFileDialog(u8 save, cstr title, cstr filename, cstr extensions)
     {
         u32 len = 0;
         for (; filename[len]; len++);
-        RtlCopyMemory(s_ui.dialog_path, "save.bin", len + 1);
+        RtlCopyMemory((ptr)s_ui.dialog_path, (const ptr)filename, len + 1);
     }
     else
     {

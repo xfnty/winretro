@@ -23,16 +23,34 @@ enum CoreInputAxis {
     _CORE_AXIS_COUNT
 };
 
+typedef enum CorePixelFormat CorePixelFormat;
+enum CorePixelFormat {
+    CORE_PIXEL_FORMAT_UNDEFINED = 0,
+    CORE_PIXEL_FORMAT_0RGB1555,
+    CORE_PIXEL_FORMAT_XRGB8888,
+    CORE_PIXEL_FORMAT_RGB565,
+};
+
+typedef struct CoreOptions CoreOptions;
+struct CoreOptions {
+    struct {
+        cstr save;
+        cstr system;
+    } dirs;
+};
+
 typedef struct CoreInputAxisState CoreInputAxisState;
 struct CoreInputAxisState {
     CoreInputAxis axis;
     f32 value;
 };
 
-u8   Core_Load(cstr path);
+u8 Core_Load(cstr path);
+u8 Core_LoadGame(cstr path);
 void Core_Free(void);
 
 cstr Core_GetName(void);
+CorePixelFormat Core_GetPixelFormat(void);
 
-u8 Core_SetRom(cstr path);
 u8 Core_SetInput(CoreInputAxisState input);
+void Core_SetOptions(CoreOptions options);

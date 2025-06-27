@@ -51,6 +51,23 @@
 #define MF_DISABLED                        0x00000002L
 #define MF_BYCOMMAND                       0x00000000L
 #define MF_SEPARATOR                       0x00000800L
+#define PFD_DOUBLEBUFFER                   0x00000001
+#define PFD_DRAW_TO_WINDOW                 0x00000004
+#define PFD_SUPPORT_OPENGL                 0x00000020
+#define PFD_TYPE_RGBA                      0
+#define PFD_MAIN_PLANE                     0
+#define GL_VENDOR                          0x1F00
+#define GL_RENDERER                        0x1F01
+#define GL_VERSION                         0x1F02
+#define GL_EXTENSIONS                      0x1F03
+#define GL_COLOR_BUFFER_BIT                0x00004000
+#define WGL_CONTEXT_MAJOR_VERSION_ARB      0x2091
+#define WGL_CONTEXT_MINOR_VERSION_ARB      0x2092
+#define WGL_CONTEXT_PROFILE_MASK_ARB       0x9126
+#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB   0x00000001
+#define WGL_CONTEXT_FLAGS_ARB              0x2094
+#define WGL_CONTEXT_DEBUG_BIT_ARB          0x00000001
+#define HWND_TOP                           (HWND)0
 
 #define LOWORD(_x) ((SHORT)(_x))
 #define HIWORD(_x) ((SHORT)((DWORD)(_x) >> sizeof(SHORT)))
@@ -199,6 +216,61 @@ struct TBBUTTON {
     INT_PTR iString;
 };
 
+typedef struct PIXELFORMATDESCRIPTOR PIXELFORMATDESCRIPTOR;
+struct PIXELFORMATDESCRIPTOR {
+    WORD  nSize;
+    WORD  nVersion;
+    DWORD dwFlags;
+    BYTE  iPixelType;
+    BYTE  cColorBits;
+    BYTE  cRedBits;
+    BYTE  cRedShift;
+    BYTE  cGreenBits;
+    BYTE  cGreenShift;
+    BYTE  cBlueBits;
+    BYTE  cBlueShift;
+    BYTE  cAlphaBits;
+    BYTE  cAlphaShift;
+    BYTE  cAccumBits;
+    BYTE  cAccumRedBits;
+    BYTE  cAccumGreenBits;
+    BYTE  cAccumBlueBits;
+    BYTE  cAccumAlphaBits;
+    BYTE  cDepthBits;
+    BYTE  cStencilBits;
+    BYTE  cAuxBuffers;
+    BYTE  iLayerType;
+    BYTE  bReserved;
+    DWORD dwLayerMask;
+    DWORD dwVisibleMask;
+    DWORD dwDamageMask;
+};
+
+typedef ptr HGLRC;
+typedef u32 GLenum;
+typedef u8 GLboolean;
+typedef u32 GLbitfield;
+typedef i8 GLbyte;
+typedef i16 GLshort;
+typedef i32 GLint;
+typedef i32 GLsizei;
+typedef u8 GLubyte;
+typedef u16 GLushort;
+typedef u32 GLuint;
+typedef f32 GLfloat;
+typedef f32 GLclampf;
+typedef f64 GLdouble;
+typedef f64 GLclampd;
+typedef void GLvoid;
+
+typedef HGLRC (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(
+    HDC hDC,
+    HGLRC hShareContext,
+    const int *attribList
+);
+typedef BOOL (WINAPI *PFNWGLSWAPINTERVALEXTPROC)(int interval);
+typedef int (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC)(void);
+
 /* kernel32.dll */
 void ExitProcess(UINT code);
 HMODULE GetModuleHandleA(LPCSTR name);
@@ -255,10 +327,14 @@ HMENU CreateMenu(void);
 BOOL SetMenu(HWND window, HMENU menu);
 BOOL AppendMenuA(HMENU menu, UINT flags, UINT_PTR item, LPCSTR str);
 BOOL ModifyMenuA(HMENU menu, UINT id, UINT flags, UINT_PTR item, LPCSTR str);
+BOOL SetWindowPos(HWND window, HWND insert_type, int x, int y, int w, int h, UINT flags);
 
 /* gdi32.dll */
 HGDIOBJ GetStockObject(int id);
 BOOL GetTextExtentPoint32A(HDC dc, LPCSTR str, int length, SIZE *size);
+i32 ChoosePixelFormat(HDC dc, const PIXELFORMATDESCRIPTOR *pfd);
+i32 DescribePixelFormat(HDC dc, i32 pixel_format, UINT pfd_size, PIXELFORMATDESCRIPTOR *pfd);
+BOOL SetPixelFormat(HDC dc, i32 pixel_format, const PIXELFORMATDESCRIPTOR *pfd);
 
 /* comdlg32.dll */
 BOOL APIENTRY GetOpenFileNameA(OPENFILENAMEA *ofn);
@@ -270,3 +346,14 @@ BOOL InitCommonControlsEx(const INITCOMMONCONTROLSEX *inf);
 
 /* shell32.dll */
 HINSTANCE ShellExecuteA(HWND window, LPCSTR op, LPCSTR file, LPCSTR params, LPCSTR dir, i32 show);
+
+/* opengl32.dll */
+HGLRC WINAPI  wglCreateContext(HDC dc);
+BOOL  WINAPI  wglDeleteContext(HGLRC gl);
+ptr   WINAPI  wglGetProcAddress(LPCSTR symbol);
+BOOL  WINAPI  wglMakeCurrent(HDC dc, HGLRC gl);
+BOOL  WINAPI  SwapBuffers(HDC dc);
+void WINAPI   glClear(GLbitfield mask);
+void WINAPI   glClearColor(GLclampf r, GLclampf g, GLclampf b, GLclampf a);
+cstr APIENTRY glGetString(GLenum name);
+void APIENTRY glViewport(GLint x, GLint y, GLsizei width, GLsizei height);

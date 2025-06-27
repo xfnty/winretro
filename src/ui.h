@@ -35,3 +35,5 @@ u8 Ui_GetEvent(UiEvent *event);
 
 void Ui_SetCoreLoaded(cstr name);
 void Ui_SetRomLoaded(cstr name);
+
+void Ui_PresentFrame(void);

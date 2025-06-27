@@ -18,14 +18,14 @@ void LogMessage(LogLevel level, cstr fmt, ...)
         [LOG_ERROR] = "error: ",
     };
 
-    char usermsg[256];
+    char usermsg[1024];
     va_list args;
     va_start(args, fmt);
     u32 ulen = formatv(usermsg, sizeof(usermsg) - 1, fmt, args);
     usermsg[ulen] = '\0';
     va_end(args);
 
-    char msg[288];
+    char msg[1124];
     u32 len = 0;
     if (level_prefixes[level]) len += format(msg + len, sizeof(msg) - 2 - len, level_prefixes[level]);
     len += format(msg + len, sizeof(msg) - 2 - len, usermsg);

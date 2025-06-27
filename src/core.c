@@ -3,10 +3,25 @@
 #include "log.h"
 #include "miniwindows.h"
 
+#define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY                     9
+#define RETRO_ENVIRONMENT_SET_PIXEL_FORMAT                         10
+#define RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS                    11
+#define RETRO_ENVIRONMENT_SET_HW_RENDER                            14
+#define RETRO_ENVIRONMENT_GET_VARIABLE                             15
+#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE                        27
+#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY                       31
+#define RETRO_ENVIRONMENT_SET_CONTROLLER_INFO                      35
+#define RETRO_ENVIRONMENT_GET_LANGUAGE                             39
+#define RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION                 52
+#define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY                 55
+#define RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER                  56
+#define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL                 68
+#define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK 69
+#define RETRO_ENVIRONMENT_EXPERIMENTAL                             0x10000
+#define RETRO_ENVIRONMENT_PRIVATE                                  0x20000
+#define RETRO_ENVIRONMENT_GET_VFS_INTERFACE (45 | RETRO_ENVIRONMENT_EXPERIMENTAL)
+
 #define RETRO_NUM_CORE_OPTION_VALUES_MAX 128
-#define RETRO_ENVIRONMENT_EXPERIMENTAL 0x10000
-#define RETRO_ENVIRONMENT_PRIVATE 0x20000
-#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE 27
 
 typedef struct retro_system_info retro_system_info;
 struct retro_system_info {
@@ -44,6 +59,18 @@ struct retro_game_info {
     ptr   data;
     usize size;
     cstr  meta;
+};
+
+typedef enum retro_language retro_language;
+enum retro_language {
+    RETRO_LANGUAGE_ENGLISH = 0,
+};
+
+typedef enum retro_pixel_format retro_pixel_format;
+enum retro_pixel_format {
+    RETRO_PIXEL_FORMAT_0RGB1555 = 0,
+    RETRO_PIXEL_FORMAT_XRGB8888 = 1,
+    RETRO_PIXEL_FORMAT_RGB565   = 2,
 };
 
 typedef enum retro_log_level retro_log_level;
@@ -98,6 +125,8 @@ static struct {
     HMODULE dll;
     retro_system_info    info;
     retro_system_av_info avinfo;
+    CorePixelFormat      pixel_format;
+    CoreOptions          options;
     struct {
         #define _X(_ret, _name, _arg1, ...) _ret (*_name)(_arg1, ##__VA_ARGS__);
         RETRO_API_DECL_LIST
@@ -160,7 +189,7 @@ u8 Core_Load(cstr path)
     s_core.api.retro_set_input_poll(InputPollCallback);
     s_core.api.retro_set_input_state(InputStateCallback);
 
-    LogMessage(LOG_ERROR, "loaded %s %s", s_core.info.library_name, s_core.info.library_version);
+    LogMessage(LOG_INFO, "loaded %s %s", s_core.info.library_name, s_core.info.library_version);
     return true;
 
     Failure:
@@ -169,18 +198,7 @@ u8 Core_Load(cstr path)
     return false;
 }
 
-void Core_Free(void)
-{
-    FreeLibrary(s_core.dll);
-    RtlZeroMemory(&s_core, sizeof(s_core));
-}
-
-cstr Core_GetName(void)
-{
-    return s_core.info.library_name;
-}
-
-u8 Core_SetRom(cstr path)
+u8 Core_LoadGame(cstr path)
 {
     assert(path);
     
@@ -191,6 +209,24 @@ u8 Core_SetRom(cstr path)
     };
     return s_core.api.retro_load_game(&info);
 }
+
+void Core_Free(void)
+{
+    if (s_core.api.retro_deinit) s_core.api.retro_deinit();
+    FreeLibrary(s_core.dll);
+    RtlZeroMemory(&s_core, sizeof(s_core));
+}
+
+CorePixelFormat Core_GetPixelFormat(void)
+{
+    return s_core.pixel_format;
+}
+
+cstr Core_GetName(void)
+{
+    return s_core.info.library_name;
+}
+
 
 u8 Core_SetInput(CoreInputAxisState input)
 {
@@ -207,6 +243,11 @@ u8 Core_SetInput(CoreInputAxisState input)
     return true;
 }
 
+void Core_SetOptions(CoreOptions options)
+{
+    s_core.options = options;
+}
+
 void LogCallback(retro_log_level level, const char *format, ...)
 {
     (void)level;
@@ -215,8 +256,10 @@ void LogCallback(retro_log_level level, const char *format, ...)
     char buffer[1024];
     va_list args;
     va_start(args, format);
-    formatv(buffer, sizeof(buffer), format, args);
+    u32 len = formatv(buffer, sizeof(buffer) - 1, format, args);
     va_end(args);
+    buffer[len] = '\0';
+    for (u32 i = 0; i < len; i++) if (buffer[i] < ' ' || buffer[i] > '~') buffer[i] = ' ';
 
     LogMessage(LOG_INFO, buffer);
 }
@@ -225,21 +268,43 @@ u8 EnvironmentCallback(u32 cmd, ptr data)
 {
     assert(s_core.dll);
 
-    if (cmd & (RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE))
-    {
-        return false;
-    }
-
     switch (cmd)
     {
     case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
-        {
-            ((retro_log_callback*)data)->log = LogCallback;
-            return true;
-        }
+        ((retro_log_callback*)data)->log = LogCallback;
+        return true;
+
+    case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
+        s_core.pixel_format = (CorePixelFormat[]){
+            [RETRO_PIXEL_FORMAT_0RGB1555] = CORE_PIXEL_FORMAT_0RGB1555,
+            [RETRO_PIXEL_FORMAT_XRGB8888] = CORE_PIXEL_FORMAT_XRGB8888,
+            [RETRO_PIXEL_FORMAT_RGB565]   = CORE_PIXEL_FORMAT_RGB565,
+        }[*(retro_pixel_format*)data];
+        return true;
+
+    case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
+        *(cstr*)data = s_core.options.dirs.system;
+        return true;
+
+    case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+        *(cstr*)data = s_core.options.dirs.save;
+        return true;
+
+    case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
+    case RETRO_ENVIRONMENT_GET_LANGUAGE:
+    case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
+    case RETRO_ENVIRONMENT_SET_HW_RENDER:
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL:
+    case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
+    case RETRO_ENVIRONMENT_GET_VARIABLE:
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK:
+    case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
+    case RETRO_ENVIRONMENT_GET_VFS_INTERFACE:
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY:
+        return false;
     }
 
-    LogMessage(LOG_INFO, "ignored unknown core command %d", (i32)cmd);
+    LogMessage(LOG_INFO, "ignored unknown core command %d", (i32)cmd & (~RETRO_ENVIRONMENT_EXPERIMENTAL));
     return false;
 }
 
