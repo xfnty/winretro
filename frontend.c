@@ -1,17 +1,37 @@
 /* defines */
 #define true 1u
 #define false 0
-#define WNDCLASS_NAME "libretro-frontend"
-#define INVALID_HANDLE_VALUE  (ptr)-1
-#define ATTACH_PARENT_PROCESS (u32)-1
-#define STD_OUTPUT_HANDLE     (u32)-11
-#define IDC_ARROW             ((cstr)32512)
-#define WS_OVERLAPPEDWINDOW   0x00CF0000L
-#define CW_USEDEFAULT         0x80000000
-#define SW_SHOW               5
-#define SW_HIDE               0
-#define WM_CLOSE              0x0010u
-#define PM_REMOVE             0x0001u
+#define WNDCLASS_NAME                    "libretro-frontend"
+#define DRAWWNDCLASS_NAME                "libretro-frontend-draw"
+#define INVALID_HANDLE_VALUE             (ptr)-1
+#define ATTACH_PARENT_PROCESS            (u32)-1
+#define STD_OUTPUT_HANDLE                (u32)-11
+#define IDC_ARROW                        ((cstr)32512)
+#define WS_OVERLAPPEDWINDOW              0x00CF0000L
+#define WS_CHILD                         0x40000000L
+#define WS_VISIBLE                       0x10000000L
+#define CW_USEDEFAULT                    0x80000000
+#define SW_SHOW                          5
+#define SW_HIDE                          0
+#define WM_CLOSE                         0x0010
+#define WM_SIZE                          0x0005
+#define PM_REMOVE                        0x0001
+#define CS_OWNDC                         0x0020
+#define PFD_DOUBLEBUFFER                 0x00000001
+#define PFD_DRAW_TO_WINDOW               0x00000004
+#define PFD_SUPPORT_OPENGL               0x00000020
+#define PFD_TYPE_RGBA                    0
+#define PFD_MAIN_PLANE                   0
+#define GL_VENDOR                        0x1F00
+#define GL_RENDERER                      0x1F01
+#define GL_VERSION                       0x1F02
+#define GL_COLOR_BUFFER_BIT              0x00004000
+#define WGL_CONTEXT_MAJOR_VERSION_ARB    0x2091
+#define WGL_CONTEXT_MINOR_VERSION_ARB    0x2092
+#define WGL_CONTEXT_PROFILE_MASK_ARB     0x9126
+#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+#define WGL_CONTEXT_FLAGS_ARB            0x2094
+#define WGL_CONTEXT_DEBUG_BIT_ARB        0x00000001
 
 #if defined(_MSC_VER)
     #define WINAPI __stdcall
@@ -67,6 +87,50 @@ struct MSG {
     POINT pt;
     u32   lPrivate;
 };
+typedef struct RECT RECT;
+struct RECT {
+    i32 left;
+    i32 top;
+    i32 right;
+    i32 bottom;
+};
+typedef struct PIXELFORMATDESCRIPTOR PIXELFORMATDESCRIPTOR;
+struct PIXELFORMATDESCRIPTOR {
+    u16  nSize;
+    u16  nVersion;
+    u32 dwFlags;
+    u8  iPixelType;
+    u8  cColorBits;
+    u8  cRedBits;
+    u8  cRedShift;
+    u8  cGreenBits;
+    u8  cGreenShift;
+    u8  cBlueBits;
+    u8  cBlueShift;
+    u8  cAlphaBits;
+    u8  cAlphaShift;
+    u8  cAccumBits;
+    u8  cAccumRedBits;
+    u8  cAccumGreenBits;
+    u8  cAccumBlueBits;
+    u8  cAccumAlphaBits;
+    u8  cDepthBits;
+    u8  cStencilBits;
+    u8  cAuxBuffers;
+    u8  iLayerType;
+    u8  bReserved;
+    u32 dwLayerMask;
+    u32 dwVisibleMask;
+    u32 dwDamageMask;
+};
+typedef ptr (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(
+    ptr hDC,
+    ptr hShareContext,
+    i32 *attribList
+);
+typedef u32 (WINAPI *PFNWGLSWAPINTERVALEXTPROC)(i32 interval);
+typedef i32 (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC)(void);
+
 
 
 /* macros */
@@ -77,14 +141,14 @@ struct MSG {
 #if defined(_MSC_VER)
     #define assert(_x, _m, ...) do { \
             if (!(_x)) { \
-                print("error: " _m, ##__VA_ARGS__); \
+                print("error: " _m " (%s():%d)", ##__VA_ARGS__, __func__, __LINE__); \
                 __debugbreak(); \
             } \
         } while (0)
 #else
     #define assert(_x, _m, ...) do { \
             if (!(_x)) { \
-                print("error: " _m, ##__VA_ARGS__); \
+                print("error: " _m " (%s():%d)", ##__VA_ARGS__, __func__, __LINE__); \
                 __asm__("int3"); \
                 __builtin_unreachable(); \
             } \
@@ -117,10 +181,24 @@ ptr CreateWindowExA(
     ptr  hinst,
     ptr  lp
 );
-u32 ShowWindow(ptr hwnd, i32 show);
-u32 PeekMessageA(MSG *msg, ptr hwnd, u32 fmin, u32 fmax, u32 flags);
-u32 TranslateMessage(MSG *msg);
-u32 DispatchMessageA(MSG *msg);
+u32  ShowWindow(ptr hwnd, i32 show);
+u32  PeekMessageA(MSG *msg, ptr hwnd, u32 fmin, u32 fmax, u32 flags);
+u32  TranslateMessage(MSG *msg);
+u32  DispatchMessageA(MSG *msg);
+u32  GetClientRect(ptr hwnd, RECT *r);
+u32  SetWindowPos(ptr hwnd, ptr insert_type, i32 x, i32 y, i32 w, i32 h, u32 flags);
+ptr  GetDC(ptr hwnd);
+i32  ChoosePixelFormat(ptr hdc, PIXELFORMATDESCRIPTOR *pfd);
+i32  DescribePixelFormat(ptr hdc, i32 pixel_format, u32 pfd_size, PIXELFORMATDESCRIPTOR *pfd);
+u32  SetPixelFormat(ptr hdc, i32 pixel_format, PIXELFORMATDESCRIPTOR *pfd);
+ptr  WINAPI wglCreateContext(ptr hdc);
+u32  WINAPI wglDeleteContext(ptr hglrc);
+ptr  WINAPI wglGetProcAddress(cstr symbol);
+u32  WINAPI wglMakeCurrent(ptr hdc, ptr hglrc);
+u32  WINAPI SwapBuffers(ptr hdc);
+void WINAPI glClear(u32 mask);
+void WINAPI glClearColor(f32 r, f32 g, f32 b, f32 a);
+cstr WINAPI glGetString(u32 name);
 
 
 /* function declarations */
@@ -128,9 +206,9 @@ void _start(void);
 void init_logging(void);
 void init_ui(void);
 void process_ui_events(void);
+void present_frame(void);
 i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp);
 void print(cstr format, ...);
-void die(cstr format, ...);
 u32 snprintf(c8 *buffer, u32 maxsize, cstr format, ...);
 u32 vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args);
 
@@ -140,7 +218,10 @@ u32 _fltused=1;
 ptr g_stdout;
 struct {
     ptr hwnd;
+    ptr draw_hwnd;
     ptr hinst;
+    ptr hdc;
+    ptr hglrc;
     u32 was_exit_requested;
 } g_ui;
 
@@ -154,6 +235,7 @@ void _start(void)
     while (!g_ui.was_exit_requested)
     {
         process_ui_events();
+        present_frame();
     }
 
     ExitProcess(0);
@@ -176,7 +258,6 @@ void init_ui(void)
         .hCursor = LoadCursorA(0, IDC_ARROW),
     };
     assert(RegisterClassA(&wndclass), "RegisterClassA() failed (%d)", GetLastError());
-
     g_ui.hwnd = CreateWindowExA(
         0,
         WNDCLASS_NAME,
@@ -190,6 +271,61 @@ void init_ui(void)
         0
     );
     assert(g_ui.hwnd, "CreateWindowExA() failed (%d)", GetLastError());
+
+    WNDCLASSA drawwndclass = {
+        .style = CS_OWNDC,
+        .hInstance = g_ui.hinst,
+        .lpszClassName = DRAWWNDCLASS_NAME,
+        .lpfnWndProc = DefWindowProcA,
+        .hCursor = LoadCursorA(0, IDC_ARROW),
+    };
+    assert(RegisterClassA(&drawwndclass), "RegisterClassA() failed (%d)", GetLastError());
+    g_ui.draw_hwnd = CreateWindowExA(
+        0,
+        DRAWWNDCLASS_NAME,
+        0,
+        WS_CHILD | WS_VISIBLE,
+        0, 0, 0, 0,
+        g_ui.hwnd,
+        0,
+        g_ui.hinst,
+        0
+    );
+    assert(g_ui.hwnd, "CreateWindowExA() failed (%d)", GetLastError());
+
+    g_ui.hdc = GetDC(g_ui.draw_hwnd);
+    assert(g_ui.hdc, "GetDC() failed (%d)", GetLastError());
+    PIXELFORMATDESCRIPTOR pfd = {0};
+    pfd.nSize = sizeof(pfd);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.iLayerType = PFD_MAIN_PLANE;
+    int pixel_format = ChoosePixelFormat(g_ui.hdc, &pfd);
+    assert(DescribePixelFormat(g_ui.hdc, pixel_format, sizeof(pfd), &pfd), "DescribePixelFormat() failed (%d)", GetLastError());
+    assert(SetPixelFormat(g_ui.hdc, pixel_format, &pfd), "SetPixelFormat() failed (%d)", GetLastError());
+    ptr tmp_gl = wglCreateContext(g_ui.hdc);
+    assert(tmp_gl, "wglCreateContext() failed (%d)", GetLastError());
+    assert(wglMakeCurrent(g_ui.hdc, tmp_gl), "wglMakeCurrent() failed (%d)", GetLastError());
+    PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB
+        = (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress("wglCreateContextAttribsARB");
+    assert(wglCreateContextAttribsARB, "wglGetProcAddress(\"wglCreateContextAttribsARB\") failed (%d)", GetLastError());
+    PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT
+        = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
+    assert(wglSwapIntervalEXT, "wglGetProcAddress(\"wglSwapIntervalEXT\") failed (%d)", GetLastError());
+    assert(wglMakeCurrent(0, 0), "wglMakeCurrent() failed (%d)", GetLastError());
+    assert(wglDeleteContext(tmp_gl), "wglDeleteContext() failed (%d)", GetLastError());
+    g_ui.hglrc = wglCreateContextAttribsARB(g_ui.hdc, 0, (i32[]){
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
+        0
+    });
+    assert(g_ui.hglrc, "wglCreateContextAttribsARB() failed (%d)", GetLastError());
+    assert(wglMakeCurrent(g_ui.hdc, g_ui.hglrc), "wglMakeCurrent() failed (%d)", GetLastError());
+    assert(wglSwapIntervalEXT(1), "wglSwapIntervalEXT() failed (%d)", GetLastError());
+    print("using %s on %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
 
     ShowWindow(g_ui.hwnd, SW_SHOW);
 }
@@ -214,9 +350,25 @@ i64 window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
         g_ui.was_exit_requested = true;
         ShowWindow(g_ui.hwnd, SW_HIDE);
         break;
+
+    case WM_SIZE:
+        RECT wr;
+        assert(GetClientRect(g_ui.hwnd, &wr), "GetClientRect() failed (%d)", GetLastError());
+        RECT r = {
+            0, 0, wr.right, wr.bottom,
+        };
+        assert(SetWindowPos(g_ui.draw_hwnd, 0, r.left, r.top, r.right, r.bottom, 0), "SetWindowPos() failed (%d)", GetLastError());
+        break;
     }
     
     return DefWindowProcA(hwnd, msg, wp, lp);
+}
+
+void present_frame(void)
+{
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    SwapBuffers(g_ui.hdc);
 }
 
 void print(cstr format, ...)
@@ -227,28 +379,11 @@ void print(cstr format, ...)
     va_start(args, format);
     u32 len = vsnprintf(buffer, sizeof(buffer) - 2, format, args);
     buffer[len++] = '\n';
-    buffer[len++] = '\0';
 
     WriteConsoleA(g_stdout, buffer, len, 0, 0);
-    OutputDebugStringA(buffer);
-}
 
-void die(cstr format, ...)
-{
-    c8 buffer[1024];
-
-    u32 len = snprintf(buffer, sizeof(buffer), "error: ");
-
-    va_list args;
-    va_start(args, format);
-    len = vsnprintf(buffer + len, sizeof(buffer) - len - 2, format, args);
-    buffer[len++] = '\n';
     buffer[len++] = '\0';
-
-    WriteConsoleA(g_stdout, buffer, len, 0, 0);
     OutputDebugStringA(buffer);
-
-    ExitProcess(1);
 }
 
 u32 snprintf(c8 *buffer, u32 maxsize, cstr format, ...)
