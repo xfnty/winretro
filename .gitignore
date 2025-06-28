@@ -1,7 +1,11 @@
 # Files
+*.exe
+*.ilk
+*.pdb
+*.obj
+*.rdi
 *.ignore
 
 # Folders
 out/
-tmp/
 *.ignore/
