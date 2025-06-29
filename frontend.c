@@ -5,6 +5,17 @@
 #define WNDCLASS_NAME                    "libretro-frontend"
 #define DRAWWNDCLASS_NAME                "libretro-frontend-draw"
 
+#define GENERIC_READ                     0x80000000
+#define GENERIC_WRITE                    0x40000000
+#define FILE_SHARE_READ                  0x00000001
+#define CREATE_ALWAYS                    2
+#define OPEN_EXISTING                    3
+#define OPEN_ALWAYS                      4
+#define FILE_ATTRIBUTE_NORMAL            0x80
+#define INVALID_FILE_SIZE                0xFFFFFFFFu
+#define ERROR_FILE_NOT_FOUND             2
+#define HEAP_GENERATE_EXCEPTIONS         0x00000004
+#define HEAP_ZERO_MEMORY                 0x00000008
 #define INVALID_HANDLE_VALUE             (ptr)-1
 #define ATTACH_PARENT_PROCESS            (u32)-1
 #define STD_OUTPUT_HANDLE                (u32)-11
@@ -37,8 +48,11 @@
 #define WGL_CONTEXT_DEBUG_BIT_ARB        0x00000001
 
 #define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY 9
+#define RETRO_ENVIRONMENT_GET_VARIABLE         15
+#define RETRO_ENVIRONMENT_SET_VARIABLES        16
 #define RETRO_ENVIRONMENT_GET_LOG_INTERFACE    27
 #define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY   31
+#define RETRO_ENVIRONMENT_EXPERIMENTAL         0x10000
 
 #if defined(_MSC_VER)
     #define WINAPI __stdcall
@@ -176,6 +190,12 @@ struct retro_game_info {
     cstr meta;
 };
 
+typedef struct retro_variable retro_variable;
+struct retro_variable {
+    cstr key;
+    cstr value;
+};
+
 typedef void (*retro_log_printf_t)(u32 level, cstr fmt, ...);
 typedef u8   (*retro_environment_t)(u32 cmd, ptr data);
 typedef void (*retro_video_callback_t)(ptr data, u32 width, u32 height, u64 pitch);
@@ -240,7 +260,6 @@ struct retro_log_callback {
     _X(u64,   retro_get_memory_size,            u32 type)
 
 
-
 /* imports */
 u32  WINAPI AttachConsole(u32 pid);
 ptr  WINAPI GetStdHandle(u32 id);
@@ -288,6 +307,15 @@ ptr  LoadLibraryA(cstr name);
 u32  FreeLibrary(ptr module);
 ptr  GetProcAddress(ptr module, cstr symbol);
 void RtlZeroMemory(ptr buffer, u64 size);
+ptr  CreateFileA(cstr path, u32 access, u32 share, ptr security, u32 create, u32 flags, ptr template);
+u32  ReadFile(ptr file, ptr buffer, u32 bytes_to_read, u32 *bytes_read, ptr overlapped);
+u32  WriteFile(ptr file, ptr buffer, u32 bytes_to_write, u32 *bytes_written, ptr overlapped);
+u32  GetFileSize(ptr file, u32 *msdword);
+u32  CloseHandle(ptr handle);
+ptr  GetProcessHeap(void);
+ptr  HeapAlloc(ptr heap, u32 flags, u64 size);
+ptr  HeapReAlloc(ptr heap, u32 flags, ptr memory, u64 size);
+u32  HeapFree(ptr heap, u32 flags, ptr memory);
 
 
 /* function declarations */
@@ -295,6 +323,8 @@ void _start(void);
 void init_logging(void);
 void init_ui(void);
 void load_core(cstr path);
+void load_core_variables(void);
+void save_core_variables(void);
 void unload_core(void);
 void load_game(cstr path);
 void unload_game(void);
@@ -308,6 +338,8 @@ void core_audio_sample_callback(i16 left, i16 right);
 u64  core_audio_batch_callback(i16 *data, u64 frames);
 void core_input_poll_callback(void);
 i16  core_input_state_callback(u32 port, u32 device, u32 index, u32 id);
+cstr get_core_variable(cstr key);
+void update_core_variable(cstr key, cstr value);
 void print(cstr format, ...);
 u32  snprintf(c8 *buffer, u32 maxsize, cstr format, ...);
 u32  vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args);
@@ -335,6 +367,14 @@ struct {
         RETRO_API_DECL_LIST
         #undef _X
     } api;
+    struct {
+        u32 count;
+        u32 allocated;
+        struct {
+            c8 key[64];
+            c8 value[64];
+        } *array;
+    } vars;
 } g_core;
 
 
@@ -352,6 +392,7 @@ void _start(void)
         present_frame();
     }
 
+    save_core_variables();
     unload_game();
     unload_core();
     ExitProcess(0);
@@ -452,7 +493,7 @@ void load_core(cstr path)
     if (!g_core.module)
     {
         print("error: LoadLibraryA(\"%s\") failed (%d)", path, GetLastError());
-        return;
+        goto Failure;
     }
 
     struct {
@@ -473,18 +514,20 @@ void load_core(cstr path)
             failed = true;
         }
     }
-    if (failed) return;
+    if (failed)
+        goto Failure;
 
     u32 api = g_core.api.retro_api_version();
     if (api != 1)
     {
         print("error: core uses unsupported API version %d", api);
-        unload_core();
-        return;
+        goto Failure;
     }
 
     g_core.api.retro_get_system_info(&g_core.info);
     g_core.api.retro_get_system_av_info(&g_core.avinfo);
+
+    load_core_variables();
 
     g_core.api.retro_set_environment(core_environment_callback);
     g_core.api.retro_set_video_refresh(core_video_callback);
@@ -502,6 +545,131 @@ void load_core(cstr path)
         g_core.avinfo.geometry.max_width,
         g_core.avinfo.geometry.max_height
     );
+
+    return;
+
+    Failure:
+    unload_core();
+}
+
+void load_core_variables(void)
+{
+    c8 filename[512];
+    c8 *contents = 0;
+    snprintf(filename, sizeof(filename), "%s.ini", g_core.info.library_name);
+
+    ptr file = CreateFileA(
+        filename,
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        0,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        0
+    );
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        print("error: CreateFileA(\"%s\") failed (%d)", filename, GetLastError());
+        goto Failure;
+    }
+
+    u32 size = GetFileSize(file, 0);
+    if (size == INVALID_FILE_SIZE)
+    {
+        print("error: GetFileSize() failed (%d)", GetLastError());
+        goto Failure;
+    }
+
+    contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
+    u32 bytes_read = 0;
+    u32 ok = ReadFile(file, contents, size, &bytes_read, 0);
+    if (!ok || bytes_read != size)
+    {
+        print("error: ReadFile() failed (%d, %u/%u B)", GetLastError(), bytes_read, size);
+        goto Failure;
+    }
+
+    for (u32 i = 0; i < size; )
+    {
+        c8 key[256];
+        c8 value[256];
+
+        while (i < size && (contents[i] == ' ' || contents[i] == '\n')) i++;
+
+        u32 j;
+        for (j = 0; j < countof(key) - 1 && i < size && contents[i] != '='; j++, i++)
+            key[j] = contents[i];
+        key[j] = '\0';
+        i++;
+
+        for (j = 0; j < countof(value) - 1 && i < size && contents[i] != '\n'; j++, i++)
+            value[j] = contents[i];
+        value[j] = '\0';
+        i++;
+
+        if (!key[0]) continue;
+
+        update_core_variable(key, value);
+    }
+
+    print("loaded core settings from \"%s\"", filename);
+
+    Failure:
+    CloseHandle(file);
+    HeapFree(GetProcessHeap(), 0, contents);
+    return;
+}
+
+void save_core_variables(void)
+{
+    c8 filename[512];
+    c8 *contents = 0;
+    snprintf(filename, sizeof(filename), "%s.ini", g_core.info.library_name);
+
+    ptr file = CreateFileA(
+        filename,
+        GENERIC_WRITE,
+        FILE_SHARE_READ,
+        0,
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        0
+    );
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        print("error: CreateFileA(\"%s\") failed (%d)", filename, GetLastError());
+        goto Failure;
+    }
+
+    u32 size = sizeof(g_core.vars.array[0]) * g_core.vars.count + 1;
+    contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
+
+    u32 bytes_to_write = 0;
+    for (u32 j = 0; j < g_core.vars.count; j++)
+    {
+        bytes_to_write += snprintf(
+            contents + bytes_to_write,
+            size - bytes_to_write,
+            "%s=%s\n",
+            g_core.vars.array[j].key,
+            g_core.vars.array[j].value
+        );
+    }
+
+    u32 bytes_written = 0;
+    u32 ok = WriteFile(file, contents, bytes_to_write, &bytes_written, 0);
+    if (!ok || bytes_written != bytes_to_write)
+    {
+        print("error: WriteFile() failed (%d, %u/%u B)", GetLastError(), bytes_written, bytes_to_write);
+        goto Failure;
+    }
+
+    print("saved core settings to \"%s\"", filename);
+
+    Failure:
+    CloseHandle(file);
+    HeapFree(GetProcessHeap(), 0, contents);
+    return;
 }
 
 void unload_core(void)
@@ -584,6 +752,8 @@ void core_log_callback(u32 level, cstr format, ...)
 
 u8 core_environment_callback(u32 cmd, ptr data)
 {
+    cmd &= ~RETRO_ENVIRONMENT_EXPERIMENTAL;
+    
     switch (cmd)
     {
     case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
@@ -597,6 +767,26 @@ u8 core_environment_callback(u32 cmd, ptr data)
     case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
         *(cstr*)data = "save";
         return true;
+
+    case RETRO_ENVIRONMENT_SET_VARIABLES:
+        for (retro_variable *v = data; v->key; v++)
+        {
+            if (get_core_variable(v->key))
+                continue;
+
+            c8 value[64] = {0};
+            u32 i = 0, j = 0;
+            while (v->value[i] && v->value[i] != ';') i++;
+            i++;
+            while (v->value[i] && v->value[i] == ' ') i++;
+            while (v->value[i] && v->value[i] != '|' && j < sizeof(value) - 1) value[j++] = v->value[i++];
+            update_core_variable(v->key, value);
+        }
+        return true;
+
+    case RETRO_ENVIRONMENT_GET_VARIABLE:
+        retro_variable *v = data;
+        return (v->value = get_core_variable(v->key)) != 0;
     }
 
     print("unhandled core command %u (%p)", cmd, data);
@@ -627,6 +817,75 @@ i16 core_input_state_callback(u32 port, u32 device, u32 index, u32 id)
 {
     (void)port; (void)device; (void)index; (void)id;
     return 0;
+}
+
+cstr get_core_variable(cstr key)
+{
+    for (u32 i = 0; i < g_core.vars.count; i++)
+    {
+        c8 *k = g_core.vars.array[i].key;
+        for (u32 j = 0; j < countof(g_core.vars.array[i].key) && k[j] == key[j]; j++)
+        {
+            if (!k[j])
+            {
+                if (!key[j]) return g_core.vars.array[i].value;
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
+void update_core_variable(cstr key, cstr value)
+{
+    u32 var_idx = g_core.vars.count;
+
+    for (u32 i = 0; i < g_core.vars.count && i != var_idx; i++)
+    {
+        c8 *k = g_core.vars.array[i].key;
+        for (u32 j = 0; j < countof(g_core.vars.array[i].key) && k[j] == key[j]; j++)
+        {
+            if (!k[j])
+            {
+                if (!key[j]) var_idx = i;
+                break;
+            }
+        }
+    }
+
+    if (!g_core.vars.array || g_core.vars.count == g_core.vars.allocated)
+    {
+        g_core.vars.allocated = (g_core.vars.allocated) ? (g_core.vars.allocated << 1) : (8);
+        if (g_core.vars.array)
+        {
+            g_core.vars.array = HeapReAlloc(
+                GetProcessHeap(),
+                HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
+                g_core.vars.array,
+                sizeof(g_core.vars.array[0]) * g_core.vars.allocated
+            );
+        }
+        else
+        {
+            g_core.vars.array = HeapAlloc(
+                GetProcessHeap(),
+                HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
+                sizeof(g_core.vars.array[0]) * g_core.vars.allocated
+            );
+        }
+    }
+
+    u32 i;
+    for (i = 0; i < countof(g_core.vars.array[0].key) - 1 && key[i]; i++)
+        g_core.vars.array[var_idx].key[i] = key[i];
+    g_core.vars.array[var_idx].key[i] = '\0';
+
+    for (i = 0; i < countof(g_core.vars.array[0].value) - 1 && value[i]; i++)
+        g_core.vars.array[var_idx].value[i] = value[i];
+    g_core.vars.array[var_idx].value[i] = '\0';
+
+    if (var_idx == g_core.vars.count)
+        g_core.vars.count++;
 }
 
 void present_frame(void)

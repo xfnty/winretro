@@ -4,6 +4,7 @@
 *.pdb
 *.obj
 *.rdi
+*.ini
 *.ignore
 
 # Folders
