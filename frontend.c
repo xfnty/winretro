@@ -1,8 +1,10 @@
 /* defines */
 #define true 1u
 #define false 0
+
 #define WNDCLASS_NAME                    "libretro-frontend"
 #define DRAWWNDCLASS_NAME                "libretro-frontend-draw"
+
 #define INVALID_HANDLE_VALUE             (ptr)-1
 #define ATTACH_PARENT_PROCESS            (u32)-1
 #define STD_OUTPUT_HANDLE                (u32)-11
@@ -22,6 +24,7 @@
 #define PFD_SUPPORT_OPENGL               0x00000020
 #define PFD_TYPE_RGBA                    0
 #define PFD_MAIN_PLANE                   0
+
 #define GL_VENDOR                        0x1F00
 #define GL_RENDERER                      0x1F01
 #define GL_VERSION                       0x1F02
@@ -32,6 +35,10 @@
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
 #define WGL_CONTEXT_FLAGS_ARB            0x2094
 #define WGL_CONTEXT_DEBUG_BIT_ARB        0x00000001
+
+#define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY 9
+#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE    27
+#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY   31
 
 #if defined(_MSC_VER)
     #define WINAPI __stdcall
@@ -131,6 +138,56 @@ typedef ptr (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(
 typedef u32 (WINAPI *PFNWGLSWAPINTERVALEXTPROC)(i32 interval);
 typedef i32 (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC)(void);
 
+typedef struct retro_system_info retro_system_info;
+struct retro_system_info {
+    cstr library_name;
+    cstr library_version;
+    cstr valid_extensions;
+    u8   need_fullpath;
+    u8   block_extract;
+};
+
+typedef struct retro_game_geometry retro_game_geometry;
+struct retro_game_geometry {
+    u32 base_width;
+    u32 base_height;
+    u32 max_width;
+    u32 max_height;
+    f32 aspect_ratio;
+};
+
+typedef struct retro_system_timing retro_system_timing;
+struct retro_system_timing {
+    f64 fps;
+    f64 sample_rate;
+};
+
+typedef struct retro_system_av_info retro_system_av_info;
+struct retro_system_av_info {
+    retro_game_geometry geometry;
+    retro_system_timing timing;
+};
+
+typedef struct retro_game_info retro_game_info;
+struct retro_game_info {
+    cstr path;
+    ptr  data;
+    u64  size;
+    cstr meta;
+};
+
+typedef void (*retro_log_printf_t)(u32 level, cstr fmt, ...);
+typedef u8   (*retro_environment_t)(u32 cmd, ptr data);
+typedef void (*retro_video_callback_t)(ptr data, u32 width, u32 height, u64 pitch);
+typedef void (*retro_audio_sample_t)(i16 left, i16 right);
+typedef u64  (*retro_audio_sample_batch_t)(i16 *data, u64 frames);
+typedef void (*retro_input_poll_t)(void);
+typedef i16  (*retro_input_state_t)(u32 port, u32 device, u32 index, u32 id);
+
+typedef struct retro_log_callback retro_log_callback;
+struct retro_log_callback {
+   retro_log_printf_t log;
+};
 
 
 /* macros */
@@ -154,6 +211,34 @@ typedef i32 (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC)(void);
             } \
         } while (0)
 #endif
+
+#define RETRO_API_DECL_LIST \
+    _X(void,  retro_set_environment,            retro_environment_t callback) \
+    _X(void,  retro_set_video_refresh,          retro_video_callback_t callback) \
+    _X(void,  retro_set_audio_sample,           retro_audio_sample_t callback) \
+    _X(void,  retro_set_audio_sample_batch,     retro_audio_sample_batch_t callback) \
+    _X(void,  retro_set_input_poll,             retro_input_poll_t callback) \
+    _X(void,  retro_set_input_state,            retro_input_state_t callback) \
+    _X(void,  retro_init,                       void) \
+    _X(void,  retro_deinit,                     void) \
+    _X(u32,   retro_api_version,                void) \
+    _X(void,  retro_get_system_info,            retro_system_info* info) \
+    _X(void,  retro_get_system_av_info,         retro_system_av_info* avinfo) \
+    _X(void,  retro_set_controller_port_device, u32 port, u32 device) \
+    _X(void,  retro_reset,                      void) \
+    _X(void,  retro_run,                        void) \
+    _X(u64,   retro_serialize_size,             void) \
+    _X(u8,    retro_serialize,                  ptr data, u64 len) \
+    _X(u8,    retro_unserialize,                const ptr data, u64 len) \
+    _X(void,  retro_cheat_reset,                void) \
+    _X(void,  retro_cheat_set,                  u32 index, u8 enabled, cstr code) \
+    _X(u8,    retro_load_game,                  const retro_game_info *info) \
+    _X(u8,    retro_load_game_special,          u32 type, const retro_game_info *info, u64 count) \
+    _X(void,  retro_unload_game,                void) \
+    _X(u32,   retro_get_region,                 void) \
+    _X(ptr,   retro_get_memory_data,            u32 type) \
+    _X(u64,   retro_get_memory_size,            u32 type)
+
 
 
 /* imports */
@@ -199,23 +284,39 @@ u32  WINAPI SwapBuffers(ptr hdc);
 void WINAPI glClear(u32 mask);
 void WINAPI glClearColor(f32 r, f32 g, f32 b, f32 a);
 cstr WINAPI glGetString(u32 name);
+ptr  LoadLibraryA(cstr name);
+u32  FreeLibrary(ptr module);
+ptr  GetProcAddress(ptr module, cstr symbol);
+void RtlZeroMemory(ptr buffer, u64 size);
 
 
 /* function declarations */
 void _start(void);
 void init_logging(void);
 void init_ui(void);
+void load_core(cstr path);
+void unload_core(void);
+void load_game(cstr path);
+void unload_game(void);
 void process_ui_events(void);
 void present_frame(void);
-i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp);
+i64  WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp);
+void core_log_callback(u32 level, cstr format, ...);
+u8   core_environment_callback(u32 cmd, ptr data);
+void core_video_callback(ptr data, u32 width, u32 height, u64 pitch);
+void core_audio_sample_callback(i16 left, i16 right);
+u64  core_audio_batch_callback(i16 *data, u64 frames);
+void core_input_poll_callback(void);
+i16  core_input_state_callback(u32 port, u32 device, u32 index, u32 id);
 void print(cstr format, ...);
-u32 snprintf(c8 *buffer, u32 maxsize, cstr format, ...);
-u32 vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args);
+u32  snprintf(c8 *buffer, u32 maxsize, cstr format, ...);
+u32  vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args);
 
 
 /* variables */
 u32 _fltused=1;
 ptr g_stdout;
+
 struct {
     ptr hwnd;
     ptr draw_hwnd;
@@ -225,11 +326,24 @@ struct {
     u32 was_exit_requested;
 } g_ui;
 
+struct {
+    ptr module;
+    retro_system_info info;
+    retro_system_av_info avinfo;
+    struct {
+        #define _X(_ret, _name, _arg1, ...) _ret (*_name)(_arg1, ##__VA_ARGS__);
+        RETRO_API_DECL_LIST
+        #undef _X
+    } api;
+} g_core;
+
 
 /* function definitions */
 void _start(void)
 {
     init_logging();
+    load_core(".ignore\\swanstation_libretro.dll");
+    load_game(".ignore\\game.chd");
     init_ui();
 
     while (!g_ui.was_exit_requested)
@@ -238,6 +352,8 @@ void _start(void)
         present_frame();
     }
 
+    unload_game();
+    unload_core();
     ExitProcess(0);
 }
 
@@ -330,6 +446,93 @@ void init_ui(void)
     ShowWindow(g_ui.hwnd, SW_SHOW);
 }
 
+void load_core(cstr path)
+{
+    g_core.module = LoadLibraryA(path);
+    if (!g_core.module)
+    {
+        print("error: LoadLibraryA(\"%s\") failed (%d)", path, GetLastError());
+        return;
+    }
+
+    struct {
+        cstr symbol;
+        ptr *func;
+    } load_list[] = {
+        #define _X(_ret, _name, _arg1, ...) { #_name, (ptr)&g_core.api._name },
+        RETRO_API_DECL_LIST
+        #undef _X
+    };
+    u8 failed = false;
+    for (u32 i = 0; i < countof(load_list); i++)
+    {
+        *load_list[i].func = (ptr)GetProcAddress(g_core.module, load_list[i].symbol);
+        if (!(*load_list[i].func))
+        {
+            print("error: symbol \"%s\" not found", load_list[i].symbol);
+            failed = true;
+        }
+    }
+    if (failed) return;
+
+    u32 api = g_core.api.retro_api_version();
+    if (api != 1)
+    {
+        print("error: core uses unsupported API version %d", api);
+        unload_core();
+        return;
+    }
+
+    g_core.api.retro_get_system_info(&g_core.info);
+    g_core.api.retro_get_system_av_info(&g_core.avinfo);
+
+    g_core.api.retro_set_environment(core_environment_callback);
+    g_core.api.retro_set_video_refresh(core_video_callback);
+    g_core.api.retro_set_audio_sample(core_audio_sample_callback);
+    g_core.api.retro_set_audio_sample_batch(core_audio_batch_callback);
+    g_core.api.retro_set_input_poll(core_input_poll_callback);
+    g_core.api.retro_set_input_state(core_input_state_callback);
+
+    g_core.api.retro_init();
+
+    print(
+        "loaded %s (%d FPS, %dx%d)",
+        g_core.info.library_name,
+        (u64)g_core.avinfo.timing.fps,
+        g_core.avinfo.geometry.max_width,
+        g_core.avinfo.geometry.max_height
+    );
+}
+
+void unload_core(void)
+{
+    if (g_core.module)
+    {
+        g_core.api.retro_unload_game();
+        g_core.api.retro_deinit();
+    }
+
+    FreeLibrary(g_core.module);
+    RtlZeroMemory(&g_core, sizeof(g_core));
+}
+
+void load_game(cstr path)
+{
+    assert(g_core.module, "attempted to load game when core was unloaded");
+
+    retro_game_info info = { .path = path };
+    if (!g_core.api.retro_load_game(&info))
+    {
+        print("error: failed to load game \"%s\"", path);
+    }
+}
+
+void unload_game(void)
+{
+    assert(g_core.module, "attempted to unload game when core was unloaded");
+    g_core.api.retro_unload_game();
+}
+
 void process_ui_events(void)
 {
     for (MSG msg; PeekMessageA(&msg, g_ui.hwnd, 0, 0, PM_REMOVE) != 0;)
@@ -362,6 +565,68 @@ i64 window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
     }
     
     return DefWindowProcA(hwnd, msg, wp, lp);
+}
+
+void core_log_callback(u32 level, cstr format, ...)
+{
+    (void)level;
+
+    c8 buffer[1024];
+
+    va_list args;
+    va_start(args, format);
+    u32 len = vsnprintf(buffer, sizeof(buffer), format, args);
+
+    for (u32 i = 0; i < len; i++) if (buffer[i] < ' ' || buffer[i] > '~') buffer[i] = ' ';
+
+    print("%s", buffer);
+}
+
+u8 core_environment_callback(u32 cmd, ptr data)
+{
+    switch (cmd)
+    {
+    case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
+        ((retro_log_callback*)data)->log = core_log_callback;
+        return true;
+
+    case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
+        *(cstr*)data = "system";
+        return true;
+
+    case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+        *(cstr*)data = "save";
+        return true;
+    }
+
+    print("unhandled core command %u (%p)", cmd, data);
+    return false;
+}
+
+void core_video_callback(ptr data, u32 width, u32 height, u64 pitch)
+{
+    (void)data; (void)width; (void)height; (void)pitch;
+}
+
+void core_audio_sample_callback(i16 left, i16 right)
+{
+    (void)left; (void)right;
+}
+
+u64 core_audio_batch_callback(i16 *data, u64 frames)
+{
+    (void)data; (void)frames;
+    return 0;
+}
+
+void core_input_poll_callback(void)
+{
+}
+
+i16 core_input_state_callback(u32 port, u32 device, u32 index, u32 id)
+{
+    (void)port; (void)device; (void)index; (void)id;
+    return 0;
 }
 
 void present_frame(void)
