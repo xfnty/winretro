@@ -24,10 +24,12 @@
 #define WS_CHILD                         0x40000000L
 #define WS_VISIBLE                       0x10000000L
 #define CW_USEDEFAULT                    0x80000000
-#define SW_SHOW                          5
 #define SW_HIDE                          0
+#define SW_SHOWNORMAL                    1
+#define SW_SHOW                          5
 #define WM_CLOSE                         0x0010
 #define WM_SIZE                          0x0005
+#define WM_COMMAND                       0x0111
 #define PM_REMOVE                        0x0001
 #define CS_OWNDC                         0x0020
 #define PFD_DOUBLEBUFFER                 0x00000001
@@ -35,6 +37,15 @@
 #define PFD_SUPPORT_OPENGL               0x00000020
 #define PFD_TYPE_RGBA                    0
 #define PFD_MAIN_PLANE                   0
+#define OFN_PATHMUSTEXIST                0x00000800
+#define OFN_FILEMUSTEXIST                0x00001000
+#define OFN_OVERWRITEPROMPT              0x00000002
+
+#define MF_POPUP                         0x00000010L
+#define MF_ENABLED                       0x00000000L
+#define MF_DISABLED                      0x00000002L
+#define MF_BYCOMMAND                     0x00000000L
+#define MF_SEPARATOR                     0x00000800L
 
 #define GL_VENDOR                        0x1F00
 #define GL_RENDERER                      0x1F01
@@ -53,6 +64,19 @@
 #define RETRO_ENVIRONMENT_GET_LOG_INTERFACE    27
 #define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY   31
 #define RETRO_ENVIRONMENT_EXPERIMENTAL         0x10000
+
+#define MENU_OPEN_CORE_STR    "Open Core"
+#define MENU_OPEN_ROM_STR     "Open ROM"
+#define MENU_LOAD_STATE_STR   "Load State"
+#define MENU_SAVE_STATE_STR   "Save State"
+#define MENU_EXIT_STR         "Exit"
+#define MENU_OPEN_WEBSITE_STR "GitHub Repository"
+#define MENU_OPEN_CORE_ID     0
+#define MENU_OPEN_ROM_ID      1
+#define MENU_LOAD_STATE_ID    2
+#define MENU_SAVE_STATE_ID    3
+#define MENU_EXIT_ID          4
+#define MENU_OPEN_WEBSITE_ID  5
 
 #if defined(_MSC_VER)
     #define WINAPI __stdcall
@@ -151,6 +175,32 @@ typedef ptr (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(
 );
 typedef u32 (WINAPI *PFNWGLSWAPINTERVALEXTPROC)(i32 interval);
 typedef i32 (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC)(void);
+typedef struct OPENFILENAMEA OPENFILENAMEA;
+struct OPENFILENAMEA {
+    u32  lStructSize;
+    ptr  hwndOwner;
+    ptr  hInstance;
+    cstr lpstrFilter;
+    c8  *lpstrCustomFilter;
+    u32  nMaxCustFilter;
+    u32  nFilterIndex;
+    c8  *lpstrFile;
+    u32  nMaxFile;
+    c8  *lpstrFileTitle;
+    u32  nMaxFileTitle;
+    cstr lpstrInitialDir;
+    cstr lpstrTitle;
+    u32  Flags;
+    u16  nFileOffset;
+    u16  nFileExtension;
+    cstr lpstrDefExt;
+    i64  lCustData;
+    ptr  lpfnHook;
+    cstr lpTemplateName;
+    ptr  pvReserved;
+    u32  dwReserved;
+    u32  FlagsEx;
+};
 
 typedef struct retro_system_info retro_system_info;
 struct retro_system_info {
@@ -263,6 +313,7 @@ struct retro_log_callback {
 /* imports */
 u32  WINAPI AttachConsole(u32 pid);
 ptr  WINAPI GetStdHandle(u32 id);
+u32  IsDebuggerPresent(void);
 void ExitProcess(u32 code);
 u32  GetLastError(void);
 u32  WriteConsoleA(ptr console, ptr buffer, u32 bytes, u32 *written, ptr _reserved);
@@ -285,13 +336,18 @@ ptr CreateWindowExA(
     ptr  hinst,
     ptr  lp
 );
+i64  SendMessageA(ptr hwnd, u32 msg, u64 wp, i64 lp);
 u32  ShowWindow(ptr hwnd, i32 show);
 u32  PeekMessageA(MSG *msg, ptr hwnd, u32 fmin, u32 fmax, u32 flags);
 u32  TranslateMessage(MSG *msg);
 u32  DispatchMessageA(MSG *msg);
 u32  GetClientRect(ptr hwnd, RECT *r);
+u32  AppendMenuA(ptr hmenu, u32 flags, u64 item, cstr str);
+u32  ModifyMenuA(ptr hmenu, u32 id, u32 flags, u64 item, cstr str);
 u32  SetWindowPos(ptr hwnd, ptr insert_type, i32 x, i32 y, i32 w, i32 h, u32 flags);
 ptr  GetDC(ptr hwnd);
+u32  DestroyWindow(ptr hwnd);
+u32  UnregisterClassA(cstr cls, ptr hinst);
 i32  ChoosePixelFormat(ptr hdc, PIXELFORMATDESCRIPTOR *pfd);
 i32  DescribePixelFormat(ptr hdc, i32 pixel_format, u32 pfd_size, PIXELFORMATDESCRIPTOR *pfd);
 u32  SetPixelFormat(ptr hdc, i32 pixel_format, PIXELFORMATDESCRIPTOR *pfd);
@@ -307,6 +363,7 @@ ptr  LoadLibraryA(cstr name);
 u32  FreeLibrary(ptr module);
 ptr  GetProcAddress(ptr module, cstr symbol);
 void RtlZeroMemory(ptr buffer, u64 size);
+void RtlCopyMemory(ptr dst, const ptr src, u64 size);
 ptr  CreateFileA(cstr path, u32 access, u32 share, ptr security, u32 create, u32 flags, ptr template);
 u32  ReadFile(ptr file, ptr buffer, u32 bytes_to_read, u32 *bytes_read, ptr overlapped);
 u32  WriteFile(ptr file, ptr buffer, u32 bytes_to_write, u32 *bytes_written, ptr overlapped);
@@ -316,12 +373,18 @@ ptr  GetProcessHeap(void);
 ptr  HeapAlloc(ptr heap, u32 flags, u64 size);
 ptr  HeapReAlloc(ptr heap, u32 flags, ptr memory, u64 size);
 u32  HeapFree(ptr heap, u32 flags, ptr memory);
+ptr  CreateMenu(void);
+u32  WINAPI GetOpenFileNameA(OPENFILENAMEA *ofn);
+u32  WINAPI GetSaveFileNameA(OPENFILENAMEA *ofn);
+u32  CommDlgExtendedError(void);
+ptr  ShellExecuteA(ptr hwnd, cstr op, cstr file, cstr params, cstr dir, i32 show);
 
 
 /* function declarations */
 void _start(void);
 void init_logging(void);
 void init_ui(void);
+void free_ui(void);
 void load_core(cstr path);
 void load_core_variables(void);
 void save_core_variables(void);
@@ -341,18 +404,24 @@ i16  core_input_state_callback(u32 port, u32 device, u32 index, u32 id);
 cstr get_core_variable(cstr key);
 void update_core_variable(cstr key, cstr value);
 void print(cstr format, ...);
+u8   open_file_dialog(u8 save, cstr title, cstr filename, cstr extensions, c8 *path, u32 pathmax);
 u32  snprintf(c8 *buffer, u32 maxsize, cstr format, ...);
 u32  vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args);
 
 
 /* variables */
 u32 _fltused=1;
-ptr g_stdout;
+
+struct {
+    u32 enabled;
+    ptr stdout;
+} g_log;
 
 struct {
     ptr hwnd;
     ptr draw_hwnd;
     ptr hinst;
+    ptr hmenu;
     ptr hdc;
     ptr hglrc;
     u32 was_exit_requested;
@@ -382,8 +451,6 @@ struct {
 void _start(void)
 {
     init_logging();
-    load_core(".ignore\\swanstation_libretro.dll");
-    load_game(".ignore\\game.chd");
     init_ui();
 
     while (!g_ui.was_exit_requested)
@@ -392,21 +459,38 @@ void _start(void)
         present_frame();
     }
 
-    save_core_variables();
-    unload_game();
     unload_core();
+    free_ui();
     ExitProcess(0);
 }
 
 void init_logging(void)
 {
     AttachConsole(ATTACH_PARENT_PROCESS);
-    g_stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    g_log.stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    g_log.enabled = g_log.stdout != INVALID_HANDLE_VALUE || IsDebuggerPresent();
 }
 
 void init_ui(void)
 {
     g_ui.hinst = GetModuleHandleA(0);
+
+    ptr file_menu = CreateMenu();
+    assert(AppendMenuA(file_menu, 0, MENU_OPEN_CORE_ID,  MENU_OPEN_CORE_STR), "AppendMenuA() failed (%d)", GetLastError());
+    assert(AppendMenuA(file_menu, 0, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR), "AppendMenuA() failed (%d)", GetLastError());
+    assert(AppendMenuA(file_menu, 0, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR), "AppendMenuA() failed (%d)", GetLastError());
+    assert(AppendMenuA(file_menu, 0, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR), "AppendMenuA() failed (%d)", GetLastError());
+    assert(AppendMenuA(file_menu, MF_SEPARATOR, 0, 0), "AppendMenuA() failed (%d)", GetLastError());
+    assert(AppendMenuA(file_menu, 0, MENU_EXIT_ID, "Exit"), "AppendMenuA() failed (%d)", GetLastError());
+    ptr help_menu = CreateMenu();
+    assert(AppendMenuA(help_menu, 0, MENU_OPEN_WEBSITE_ID, MENU_OPEN_WEBSITE_STR), "AppendMenuA() failed (%d)", GetLastError());
+    g_ui.hmenu = CreateMenu();
+    assert(AppendMenuA(g_ui.hmenu, MF_POPUP, (u64)file_menu, "File"), "AppendMenuA() failed (%d)", GetLastError());
+    assert(AppendMenuA(g_ui.hmenu, MF_POPUP, (u64)help_menu, "Help"), "AppendMenuA() failed (%d)", GetLastError());
+
+    ModifyMenuA(g_ui.hmenu, MENU_OPEN_ROM_ID,   MF_DISABLED, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
+    ModifyMenuA(g_ui.hmenu, MENU_LOAD_STATE_ID, MF_DISABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
+    ModifyMenuA(g_ui.hmenu, MENU_SAVE_STATE_ID, MF_DISABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
 
     WNDCLASSA wndclass = {
         .hInstance = g_ui.hinst,
@@ -423,7 +507,7 @@ void init_ui(void)
         CW_USEDEFAULT, CW_USEDEFAULT,
         CW_USEDEFAULT, CW_USEDEFAULT,
         0,
-        0,
+        g_ui.hmenu,
         g_ui.hinst,
         0
     );
@@ -487,8 +571,19 @@ void init_ui(void)
     ShowWindow(g_ui.hwnd, SW_SHOW);
 }
 
+void free_ui(void)
+{
+    DestroyWindow(g_ui.draw_hwnd);
+    DestroyWindow(g_ui.hwnd);
+    UnregisterClassA(DRAWWNDCLASS_NAME, g_ui.hinst);
+    UnregisterClassA(WNDCLASS_NAME, g_ui.hinst);
+    RtlZeroMemory(&g_ui, sizeof(g_ui));
+}
+
 void load_core(cstr path)
 {
+    unload_core();
+
     g_core.module = LoadLibraryA(path);
     if (!g_core.module)
     {
@@ -537,6 +632,8 @@ void load_core(cstr path)
     g_core.api.retro_set_input_state(core_input_state_callback);
 
     g_core.api.retro_init();
+
+    ModifyMenuA(g_ui.hmenu, MENU_OPEN_ROM_ID,   MF_ENABLED,  MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
 
     print(
         "loaded %s (%d FPS, %dx%d)",
@@ -674,8 +771,13 @@ void save_core_variables(void)
 
 void unload_core(void)
 {
+    ModifyMenuA(g_ui.hmenu, MENU_OPEN_ROM_ID,   MF_DISABLED, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
+    ModifyMenuA(g_ui.hmenu, MENU_LOAD_STATE_ID, MF_DISABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
+    ModifyMenuA(g_ui.hmenu, MENU_SAVE_STATE_ID, MF_DISABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
+
     if (g_core.module)
     {
+        save_core_variables();
         g_core.api.retro_unload_game();
         g_core.api.retro_deinit();
     }
@@ -688,16 +790,27 @@ void load_game(cstr path)
 {
     assert(g_core.module, "attempted to load game when core was unloaded");
 
+    unload_game();
+
     retro_game_info info = { .path = path };
     if (!g_core.api.retro_load_game(&info))
     {
         print("error: failed to load game \"%s\"", path);
+        return;
     }
+
+    ModifyMenuA(g_ui.hmenu, MENU_LOAD_STATE_ID, MF_ENABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
+    ModifyMenuA(g_ui.hmenu, MENU_SAVE_STATE_ID, MF_ENABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
 }
 
 void unload_game(void)
 {
-    assert(g_core.module, "attempted to unload game when core was unloaded");
+    ModifyMenuA(g_ui.hmenu, MENU_LOAD_STATE_ID, MF_DISABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
+    ModifyMenuA(g_ui.hmenu, MENU_SAVE_STATE_ID, MF_DISABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
+
+    if (!g_core.module)
+        return;
+
     g_core.api.retro_unload_game();
 }
 
@@ -715,6 +828,8 @@ i64 window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
     if (hwnd != g_ui.hwnd)
         return DefWindowProcA(hwnd, msg, wp, lp);
 
+    c8 path[256];
+
     switch (msg)
     {
     case WM_CLOSE:
@@ -729,6 +844,39 @@ i64 window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
             0, 0, wr.right, wr.bottom,
         };
         assert(SetWindowPos(g_ui.draw_hwnd, 0, r.left, r.top, r.right, r.bottom, 0), "SetWindowPos() failed (%d)", GetLastError());
+        break;
+
+    case WM_COMMAND:
+        switch ((u16)wp)
+        {
+        case MENU_EXIT_ID:
+            SendMessageA(g_ui.hwnd, WM_CLOSE, 0, 0);
+            break;
+
+        case MENU_OPEN_CORE_ID:
+            if (open_file_dialog(false, MENU_OPEN_CORE_STR, 0, "Libretro Core (*.dll)\0*.DLL\0", path, sizeof(path)))
+                load_core(path);
+            break;
+
+        case MENU_OPEN_ROM_ID:
+            if (open_file_dialog(false, MENU_OPEN_ROM_STR, 0, "Game Rom (*.chd)\0*.CHD\0Game Rom (*.bin)\0*.BIN\0All Files (*.*)\0*.*\0", path, sizeof(path)))
+                load_game(path);
+            break;
+
+        case MENU_LOAD_STATE_ID:
+            if (open_file_dialog(false, MENU_LOAD_STATE_STR, 0, "Game State (*.bin)\0*.BIN\0All Files (*.*)\0*.*\0", path, sizeof(path)))
+                print("load state from \"%s\"", path);
+            break;
+
+        case MENU_SAVE_STATE_ID:
+            if (open_file_dialog(true, MENU_SAVE_STATE_STR, "save.bin", "Game State (*.bin)\0*.BIN\0All Files (*.*)\0*.*\0", path, sizeof(path)))
+                print("save state to \"%s\"", path);
+            break;
+
+        case MENU_OPEN_WEBSITE_ID:
+            ShellExecuteA(0, "open", "https://github.com/xfnty/tiny-libretro-frontend", 0, 0, SW_SHOWNORMAL);
+            break;
+        }
         break;
     }
     
@@ -895,8 +1043,36 @@ void present_frame(void)
     SwapBuffers(g_ui.hdc);
 }
 
+u8 open_file_dialog(u8 save, cstr title, cstr filename, cstr extensions, c8 *path, u32 pathmax)
+{
+    if (filename)
+    {
+        snprintf(path, pathmax, "%s", filename);
+    }
+    else
+    {
+        RtlZeroMemory(path, pathmax);
+    }
+
+    OPENFILENAMEA info = {
+        .lStructSize = sizeof(info),
+        .lpstrTitle = title,
+        .hwndOwner = g_ui.hwnd,
+        .lpstrFilter = extensions,
+        .nFilterIndex = 1,
+        .lpstrFile = path,
+        .nMaxFile = pathmax,
+        .Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | ((save) ? (OFN_OVERWRITEPROMPT) : (0)),
+    };
+
+    return (u8)((save) ? (GetSaveFileNameA(&info)) : (GetOpenFileNameA(&info)));
+}
+
 void print(cstr format, ...)
 {
+    if (!g_log.enabled)
+        return;
+
     c8 buffer[1024];
 
     va_list args;
@@ -904,7 +1080,7 @@ void print(cstr format, ...)
     u32 len = vsnprintf(buffer, sizeof(buffer) - 2, format, args);
     buffer[len++] = '\n';
 
-    WriteConsoleA(g_stdout, buffer, len, 0, 0);
+    WriteConsoleA(g_log.stdout, buffer, len, 0, 0);
 
     buffer[len++] = '\0';
     OutputDebugStringA(buffer);
