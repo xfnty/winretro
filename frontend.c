@@ -58,12 +58,13 @@
 #define WGL_CONTEXT_FLAGS_ARB            0x2094
 #define WGL_CONTEXT_DEBUG_BIT_ARB        0x00000001
 
-#define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY 9
-#define RETRO_ENVIRONMENT_GET_VARIABLE         15
-#define RETRO_ENVIRONMENT_SET_VARIABLES        16
-#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE    27
-#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY   31
-#define RETRO_ENVIRONMENT_EXPERIMENTAL         0x10000
+#define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY    9
+#define RETRO_ENVIRONMENT_GET_VARIABLE            15
+#define RETRO_ENVIRONMENT_SET_VARIABLES           16
+#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE       27
+#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY      31
+#define RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER 56
+#define RETRO_ENVIRONMENT_EXPERIMENTAL            0x10000
 
 #define MENU_OPEN_CORE_STR    "Open Core"
 #define MENU_OPEN_ROM_STR     "Open ROM"
@@ -259,6 +260,21 @@ struct retro_log_callback {
    retro_log_printf_t log;
 };
 
+enum retro_hw_context_type
+{
+   RETRO_HW_CONTEXT_NONE             = 0,
+   RETRO_HW_CONTEXT_OPENGL           = 1,
+   RETRO_HW_CONTEXT_OPENGLES2        = 2,
+   RETRO_HW_CONTEXT_OPENGL_CORE      = 3,
+   RETRO_HW_CONTEXT_OPENGLES3        = 4,
+   RETRO_HW_CONTEXT_OPENGLES_VERSION = 5,
+   RETRO_HW_CONTEXT_VULKAN           = 6,
+   RETRO_HW_CONTEXT_D3D11            = 7,
+   RETRO_HW_CONTEXT_D3D10            = 8,
+   RETRO_HW_CONTEXT_D3D12            = 9,
+   RETRO_HW_CONTEXT_D3D9             = 10,
+};
+
 
 /* macros */
 #define countof(_a) (sizeof(_a)/sizeof((_a)[0]))
@@ -378,10 +394,13 @@ u32  WINAPI GetOpenFileNameA(OPENFILENAMEA *ofn);
 u32  WINAPI GetSaveFileNameA(OPENFILENAMEA *ofn);
 u32  CommDlgExtendedError(void);
 ptr  ShellExecuteA(ptr hwnd, cstr op, cstr file, cstr params, cstr dir, i32 show);
+u32  GetCurrentDirectoryA(u32 maxpath, c8 *path);
+u32  GetModuleFileNameA(ptr module, c8 *path, u32 pathmax);
 
 
 /* function declarations */
 void _start(void);
+void init_paths(void);
 void init_logging(void);
 void init_ui(void);
 void free_ui(void);
@@ -446,10 +465,17 @@ struct {
     } vars;
 } g_core;
 
+struct {
+    c8 save[512];
+    c8 system[512];
+    c8 settings[512];
+} g_paths;
+
 
 /* function definitions */
 void _start(void)
 {
+    init_paths();
     init_logging();
     init_ui();
 
@@ -462,6 +488,17 @@ void _start(void)
     unload_core();
     free_ui();
     ExitProcess(0);
+}
+
+void init_paths(void)
+{
+    u32 l = GetModuleFileNameA(0, g_paths.system, sizeof(g_paths.system) - 1);
+    while (g_paths.system[l] != '\\') l--;
+    snprintf(g_paths.system + l, sizeof(g_paths.system) - l, "\\system");
+
+    l = GetModuleFileNameA(0, g_paths.save, sizeof(g_paths.save) - 1);
+    while (g_paths.save[l] != '\\') l--;
+    snprintf(g_paths.save + l, sizeof(g_paths.save) - l, "\\save");
 }
 
 void init_logging(void)
@@ -622,6 +659,10 @@ void load_core(cstr path)
     g_core.api.retro_get_system_info(&g_core.info);
     g_core.api.retro_get_system_av_info(&g_core.avinfo);
 
+    u32 l = GetModuleFileNameA(0, g_paths.settings, sizeof(g_paths.settings) - 1);
+    while (g_paths.settings[l] != '\\') l--;
+    snprintf(g_paths.settings + l, sizeof(g_paths.settings) - l, "\\%s.ini", g_core.info.library_name);
+
     load_core_variables();
 
     g_core.api.retro_set_environment(core_environment_callback);
@@ -651,12 +692,10 @@ void load_core(cstr path)
 
 void load_core_variables(void)
 {
-    c8 filename[512];
     c8 *contents = 0;
-    snprintf(filename, sizeof(filename), "%s.ini", g_core.info.library_name);
 
     ptr file = CreateFileA(
-        filename,
+        g_paths.settings,
         GENERIC_READ,
         FILE_SHARE_READ,
         0,
@@ -666,7 +705,7 @@ void load_core_variables(void)
     );
     if (file == INVALID_HANDLE_VALUE)
     {
-        print("error: CreateFileA(\"%s\") failed (%d)", filename, GetLastError());
+        print("error: CreateFileA(\"%s\") failed (%d)", g_paths.settings, GetLastError());
         goto Failure;
     }
 
@@ -709,7 +748,7 @@ void load_core_variables(void)
         update_core_variable(key, value);
     }
 
-    print("loaded core settings from \"%s\"", filename);
+    print("loaded core settings from \"%s\"", g_paths.settings);
 
     Failure:
     CloseHandle(file);
@@ -719,12 +758,10 @@ void load_core_variables(void)
 
 void save_core_variables(void)
 {
-    c8 filename[512];
     c8 *contents = 0;
-    snprintf(filename, sizeof(filename), "%s.ini", g_core.info.library_name);
 
     ptr file = CreateFileA(
-        filename,
+        g_paths.settings,
         GENERIC_WRITE,
         FILE_SHARE_READ,
         0,
@@ -734,7 +771,7 @@ void save_core_variables(void)
     );
     if (file == INVALID_HANDLE_VALUE)
     {
-        print("error: CreateFileA(\"%s\") failed (%d)", filename, GetLastError());
+        print("error: CreateFileA(\"%s\") failed (%d)", g_paths.settings, GetLastError());
         goto Failure;
     }
 
@@ -761,7 +798,7 @@ void save_core_variables(void)
         goto Failure;
     }
 
-    print("saved core settings to \"%s\"", filename);
+    print("saved core settings to \"%s\"", g_paths.settings);
 
     Failure:
     CloseHandle(file);
@@ -909,11 +946,15 @@ u8 core_environment_callback(u32 cmd, ptr data)
         return true;
 
     case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-        *(cstr*)data = "system";
+        *(cstr*)data = g_paths.system;
         return true;
 
     case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
-        *(cstr*)data = "save";
+        *(cstr*)data = g_paths.save;
+        return true;
+
+    case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
+        *(u32*)data = RETRO_HW_CONTEXT_OPENGL_CORE;
         return true;
 
     case RETRO_ENVIRONMENT_SET_VARIABLES:
