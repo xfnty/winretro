@@ -9,5 +9,6 @@
 
 # Folders
 save/
-system/
+bios/
+settings/
 *.ignore/

@@ -79,6 +79,8 @@
 #define MENU_EXIT_ID          4
 #define MENU_OPEN_WEBSITE_ID  5
 
+#define INVALID_IDX ((u32)-1)
+
 #if defined(_MSC_VER)
     #define WINAPI __stdcall
 #else
@@ -260,43 +262,57 @@ struct retro_log_callback {
    retro_log_printf_t log;
 };
 
-enum retro_hw_context_type
-{
+typedef enum retro_hw_context_type retro_hw_context_type;
+enum retro_hw_context_type {
    RETRO_HW_CONTEXT_NONE             = 0,
    RETRO_HW_CONTEXT_OPENGL           = 1,
    RETRO_HW_CONTEXT_OPENGLES2        = 2,
    RETRO_HW_CONTEXT_OPENGL_CORE      = 3,
    RETRO_HW_CONTEXT_OPENGLES3        = 4,
    RETRO_HW_CONTEXT_OPENGLES_VERSION = 5,
-   RETRO_HW_CONTEXT_VULKAN           = 6,
-   RETRO_HW_CONTEXT_D3D11            = 7,
-   RETRO_HW_CONTEXT_D3D10            = 8,
-   RETRO_HW_CONTEXT_D3D12            = 9,
-   RETRO_HW_CONTEXT_D3D9             = 10,
 };
 
 
 /* macros */
 #define countof(_a) (sizeof(_a)/sizeof((_a)[0]))
-#define va_start(_list, _last_arg) do { _list = (u8*)&(_last_arg) + 8; } while (0)
+#define va_create(_last_arg) ((u8*)&(_last_arg) + 8)
 #define va_arg(_list, _T) ( ( sizeof(_T) > 8) ? (**(_T**)((_list += 8) - 8)) : ( *(_T* )((_list += 8) - 8)) )
 
 #if defined(_MSC_VER)
-    #define assert(_x, _m, ...) do { \
+    #define assert(_x) do { \
             if (!(_x)) { \
-                print("error: " _m " (%s():%d)", ##__VA_ARGS__, __func__, __LINE__); \
+                print("assertion " #_x " failed (%s():%d)", __func__, __LINE__); \
                 __debugbreak(); \
             } \
         } while (0)
 #else
-    #define assert(_x, _m, ...) do { \
+    #define assert(_x) do { \
             if (!(_x)) { \
-                print("error: " _m " (%s():%d)", ##__VA_ARGS__, __func__, __LINE__); \
+                print("assertion " #_x " failed (%s():%d)", __func__, __LINE__); \
                 __asm__("int3"); \
                 __builtin_unreachable(); \
             } \
         } while (0)
 #endif
+#define assertp(_x, _m, ...) do { \
+        if (!(_x)) { \
+            print(_m, ##__VA_ARGS__); \
+            assert(0); \
+        } \
+    } while (0)
+#define check_goto(_x, _label) do { if(!(_x)) goto _label } while (0)
+#define checkp_goto(_x, _label, _m, ...) do { \
+        if (!(_x)) { \
+            print(_m, ##__VA_ARGS__); \
+            goto _label; \
+        } \
+    } while (0)
+#define checkp_return(_x, _label, _m, ...) do { \
+        if (!(_x)) { \
+            print(_m, ##__VA_ARGS__); \
+            return; \
+        } \
+    } while (0)
 
 #define RETRO_API_DECL_LIST \
     _X(void,  retro_set_environment,            retro_environment_t callback) \
@@ -379,7 +395,6 @@ ptr  LoadLibraryA(cstr name);
 u32  FreeLibrary(ptr module);
 ptr  GetProcAddress(ptr module, cstr symbol);
 void RtlZeroMemory(ptr buffer, u64 size);
-void RtlCopyMemory(ptr dst, const ptr src, u64 size);
 ptr  CreateFileA(cstr path, u32 access, u32 share, ptr security, u32 create, u32 flags, ptr template);
 u32  ReadFile(ptr file, ptr buffer, u32 bytes_to_read, u32 *bytes_read, ptr overlapped);
 u32  WriteFile(ptr file, ptr buffer, u32 bytes_to_write, u32 *bytes_written, ptr overlapped);
@@ -392,9 +407,7 @@ u32  HeapFree(ptr heap, u32 flags, ptr memory);
 ptr  CreateMenu(void);
 u32  WINAPI GetOpenFileNameA(OPENFILENAMEA *ofn);
 u32  WINAPI GetSaveFileNameA(OPENFILENAMEA *ofn);
-u32  CommDlgExtendedError(void);
 ptr  ShellExecuteA(ptr hwnd, cstr op, cstr file, cstr params, cstr dir, i32 show);
-u32  GetCurrentDirectoryA(u32 maxpath, c8 *path);
 u32  GetModuleFileNameA(ptr module, c8 *path, u32 pathmax);
 
 
@@ -420,8 +433,10 @@ void core_audio_sample_callback(i16 left, i16 right);
 u64  core_audio_batch_callback(i16 *data, u64 frames);
 void core_input_poll_callback(void);
 i16  core_input_state_callback(u32 port, u32 device, u32 index, u32 id);
+u32  str_equals(cstr a, cstr b, u32 minsize);
 cstr get_core_variable(cstr key);
 void update_core_variable(cstr key, cstr value);
+u32  get_core_variable_idx(cstr key);
 void print(cstr format, ...);
 u8   open_file_dialog(u8 save, cstr title, cstr filename, cstr extensions, c8 *path, u32 pathmax);
 u32  snprintf(c8 *buffer, u32 maxsize, cstr format, ...);
@@ -460,14 +475,15 @@ struct {
         u32 allocated;
         struct {
             c8 key[64];
-            c8 value[64];
+            c8 value[32];
         } *array;
     } vars;
 } g_core;
 
 struct {
+    c8 root[512];
     c8 save[512];
-    c8 system[512];
+    c8 bios[512];
     c8 settings[512];
 } g_paths;
 
@@ -475,8 +491,8 @@ struct {
 /* function definitions */
 void _start(void)
 {
-    init_paths();
     init_logging();
+    init_paths();
     init_ui();
 
     while (!g_ui.was_exit_requested)
@@ -492,13 +508,12 @@ void _start(void)
 
 void init_paths(void)
 {
-    u32 l = GetModuleFileNameA(0, g_paths.system, sizeof(g_paths.system) - 1);
-    while (g_paths.system[l] != '\\') l--;
-    snprintf(g_paths.system + l, sizeof(g_paths.system) - l, "\\system");
+    u32 l = GetModuleFileNameA(0, g_paths.root, sizeof(g_paths.root) - 1);
+    while (g_paths.root[l] != '\\') l--;
+    g_paths.root[l] = '\0';
 
-    l = GetModuleFileNameA(0, g_paths.save, sizeof(g_paths.save) - 1);
-    while (g_paths.save[l] != '\\') l--;
-    snprintf(g_paths.save + l, sizeof(g_paths.save) - l, "\\save");
+    snprintf(g_paths.save, sizeof(g_paths.save), "%s\\save", g_paths.root);
+    snprintf(g_paths.bios, sizeof(g_paths.bios), "%s\\bios", g_paths.root);
 }
 
 void init_logging(void)
@@ -513,17 +528,17 @@ void init_ui(void)
     g_ui.hinst = GetModuleHandleA(0);
 
     ptr file_menu = CreateMenu();
-    assert(AppendMenuA(file_menu, 0, MENU_OPEN_CORE_ID,  MENU_OPEN_CORE_STR), "AppendMenuA() failed (%d)", GetLastError());
-    assert(AppendMenuA(file_menu, 0, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR), "AppendMenuA() failed (%d)", GetLastError());
-    assert(AppendMenuA(file_menu, 0, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR), "AppendMenuA() failed (%d)", GetLastError());
-    assert(AppendMenuA(file_menu, 0, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR), "AppendMenuA() failed (%d)", GetLastError());
-    assert(AppendMenuA(file_menu, MF_SEPARATOR, 0, 0), "AppendMenuA() failed (%d)", GetLastError());
-    assert(AppendMenuA(file_menu, 0, MENU_EXIT_ID, "Exit"), "AppendMenuA() failed (%d)", GetLastError());
+    assert(AppendMenuA(file_menu, 0, MENU_OPEN_CORE_ID,  MENU_OPEN_CORE_STR));
+    assert(AppendMenuA(file_menu, 0, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR));
+    assert(AppendMenuA(file_menu, 0, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR));
+    assert(AppendMenuA(file_menu, 0, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR));
+    assert(AppendMenuA(file_menu, MF_SEPARATOR, 0, 0));
+    assert(AppendMenuA(file_menu, 0, MENU_EXIT_ID, "Exit"));
     ptr help_menu = CreateMenu();
-    assert(AppendMenuA(help_menu, 0, MENU_OPEN_WEBSITE_ID, MENU_OPEN_WEBSITE_STR), "AppendMenuA() failed (%d)", GetLastError());
+    assert(AppendMenuA(help_menu, 0, MENU_OPEN_WEBSITE_ID, MENU_OPEN_WEBSITE_STR));
     g_ui.hmenu = CreateMenu();
-    assert(AppendMenuA(g_ui.hmenu, MF_POPUP, (u64)file_menu, "File"), "AppendMenuA() failed (%d)", GetLastError());
-    assert(AppendMenuA(g_ui.hmenu, MF_POPUP, (u64)help_menu, "Help"), "AppendMenuA() failed (%d)", GetLastError());
+    assert(AppendMenuA(g_ui.hmenu, MF_POPUP, (u64)file_menu, "File"));
+    assert(AppendMenuA(g_ui.hmenu, MF_POPUP, (u64)help_menu, "Help"));
 
     ModifyMenuA(g_ui.hmenu, MENU_OPEN_ROM_ID,   MF_DISABLED, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
     ModifyMenuA(g_ui.hmenu, MENU_LOAD_STATE_ID, MF_DISABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
@@ -535,7 +550,7 @@ void init_ui(void)
         .lpfnWndProc = window_event_handler,
         .hCursor = LoadCursorA(0, IDC_ARROW),
     };
-    assert(RegisterClassA(&wndclass), "RegisterClassA() failed (%d)", GetLastError());
+    assert(RegisterClassA(&wndclass));
     g_ui.hwnd = CreateWindowExA(
         0,
         WNDCLASS_NAME,
@@ -548,7 +563,7 @@ void init_ui(void)
         g_ui.hinst,
         0
     );
-    assert(g_ui.hwnd, "CreateWindowExA() failed (%d)", GetLastError());
+    assert(g_ui.hwnd);
 
     WNDCLASSA drawwndclass = {
         .style = CS_OWNDC,
@@ -557,7 +572,7 @@ void init_ui(void)
         .lpfnWndProc = DefWindowProcA,
         .hCursor = LoadCursorA(0, IDC_ARROW),
     };
-    assert(RegisterClassA(&drawwndclass), "RegisterClassA() failed (%d)", GetLastError());
+    assert(RegisterClassA(&drawwndclass));
     g_ui.draw_hwnd = CreateWindowExA(
         0,
         DRAWWNDCLASS_NAME,
@@ -569,10 +584,10 @@ void init_ui(void)
         g_ui.hinst,
         0
     );
-    assert(g_ui.hwnd, "CreateWindowExA() failed (%d)", GetLastError());
+    assert(g_ui.hwnd);
 
     g_ui.hdc = GetDC(g_ui.draw_hwnd);
-    assert(g_ui.hdc, "GetDC() failed (%d)", GetLastError());
+    assert(g_ui.hdc);
     PIXELFORMATDESCRIPTOR pfd = {0};
     pfd.nSize = sizeof(pfd);
     pfd.nVersion = 1;
@@ -580,19 +595,19 @@ void init_ui(void)
     pfd.iPixelType = PFD_TYPE_RGBA;
     pfd.iLayerType = PFD_MAIN_PLANE;
     int pixel_format = ChoosePixelFormat(g_ui.hdc, &pfd);
-    assert(DescribePixelFormat(g_ui.hdc, pixel_format, sizeof(pfd), &pfd), "DescribePixelFormat() failed (%d)", GetLastError());
-    assert(SetPixelFormat(g_ui.hdc, pixel_format, &pfd), "SetPixelFormat() failed (%d)", GetLastError());
+    assert(DescribePixelFormat(g_ui.hdc, pixel_format, sizeof(pfd), &pfd));
+    assert(SetPixelFormat(g_ui.hdc, pixel_format, &pfd));
     ptr tmp_gl = wglCreateContext(g_ui.hdc);
-    assert(tmp_gl, "wglCreateContext() failed (%d)", GetLastError());
-    assert(wglMakeCurrent(g_ui.hdc, tmp_gl), "wglMakeCurrent() failed (%d)", GetLastError());
+    assert(tmp_gl);
+    assert(wglMakeCurrent(g_ui.hdc, tmp_gl));
     PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB
         = (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress("wglCreateContextAttribsARB");
-    assert(wglCreateContextAttribsARB, "wglGetProcAddress(\"wglCreateContextAttribsARB\") failed (%d)", GetLastError());
+    assert(wglCreateContextAttribsARB);
     PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT
         = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
-    assert(wglSwapIntervalEXT, "wglGetProcAddress(\"wglSwapIntervalEXT\") failed (%d)", GetLastError());
-    assert(wglMakeCurrent(0, 0), "wglMakeCurrent() failed (%d)", GetLastError());
-    assert(wglDeleteContext(tmp_gl), "wglDeleteContext() failed (%d)", GetLastError());
+    assert(wglSwapIntervalEXT);
+    assert(wglMakeCurrent(0, 0));
+    assert(wglDeleteContext(tmp_gl));
     g_ui.hglrc = wglCreateContextAttribsARB(g_ui.hdc, 0, (i32[]){
         WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
         WGL_CONTEXT_MINOR_VERSION_ARB, 3,
@@ -600,9 +615,9 @@ void init_ui(void)
         WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
         0
     });
-    assert(g_ui.hglrc, "wglCreateContextAttribsARB() failed (%d)", GetLastError());
-    assert(wglMakeCurrent(g_ui.hdc, g_ui.hglrc), "wglMakeCurrent() failed (%d)", GetLastError());
-    assert(wglSwapIntervalEXT(1), "wglSwapIntervalEXT() failed (%d)", GetLastError());
+    assert(g_ui.hglrc);
+    assert(wglMakeCurrent(g_ui.hdc, g_ui.hglrc));
+    assert(wglSwapIntervalEXT(1));
     print("using %s on %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
 
     ShowWindow(g_ui.hwnd, SW_SHOW);
@@ -621,12 +636,15 @@ void load_core(cstr path)
 {
     unload_core();
 
+    g_core.vars.allocated = 8;
+    g_core.vars.array = HeapAlloc(
+        GetProcessHeap(),
+        HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
+        sizeof(g_core.vars.array[0]) * g_core.vars.allocated
+    );
+
     g_core.module = LoadLibraryA(path);
-    if (!g_core.module)
-    {
-        print("error: LoadLibraryA(\"%s\") failed (%d)", path, GetLastError());
-        goto Failure;
-    }
+    checkp_goto(g_core.module, Failure, "LoadLibraryA(\"%s\") failed (%d)", path, GetLastError());
 
     struct {
         cstr symbol;
@@ -636,33 +654,17 @@ void load_core(cstr path)
         RETRO_API_DECL_LIST
         #undef _X
     };
-    u8 failed = false;
     for (u32 i = 0; i < countof(load_list); i++)
     {
         *load_list[i].func = (ptr)GetProcAddress(g_core.module, load_list[i].symbol);
-        if (!(*load_list[i].func))
-        {
-            print("error: symbol \"%s\" not found", load_list[i].symbol);
-            failed = true;
-        }
+        checkp_goto(*load_list[i].func, Failure, "symbol \"%s\" not found", load_list[i].symbol);
     }
-    if (failed)
-        goto Failure;
 
     u32 api = g_core.api.retro_api_version();
-    if (api != 1)
-    {
-        print("error: core uses unsupported API version %d", api);
-        goto Failure;
-    }
+    checkp_goto(api == 1, Failure, "core uses unsupported API version %d", api);
 
     g_core.api.retro_get_system_info(&g_core.info);
-    g_core.api.retro_get_system_av_info(&g_core.avinfo);
-
-    u32 l = GetModuleFileNameA(0, g_paths.settings, sizeof(g_paths.settings) - 1);
-    while (g_paths.settings[l] != '\\') l--;
-    snprintf(g_paths.settings + l, sizeof(g_paths.settings) - l, "\\%s.ini", g_core.info.library_name);
-
+    snprintf(g_paths.settings, sizeof(g_paths.settings), "%s\\settings\\%s.ini", g_paths.root, g_core.info.library_name);
     load_core_variables();
 
     g_core.api.retro_set_environment(core_environment_callback);
@@ -674,7 +676,9 @@ void load_core(cstr path)
 
     g_core.api.retro_init();
 
-    ModifyMenuA(g_ui.hmenu, MENU_OPEN_ROM_ID,   MF_ENABLED,  MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
+    g_core.api.retro_get_system_av_info(&g_core.avinfo);
+
+    ModifyMenuA(g_ui.hmenu, MENU_OPEN_ROM_ID, MF_ENABLED,  MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
 
     print(
         "loaded %s (%d FPS, %dx%d)",
@@ -685,7 +689,6 @@ void load_core(cstr path)
     );
 
     return;
-
     Failure:
     unload_core();
 }
@@ -703,27 +706,15 @@ void load_core_variables(void)
         FILE_ATTRIBUTE_NORMAL,
         0
     );
-    if (file == INVALID_HANDLE_VALUE)
-    {
-        print("error: CreateFileA(\"%s\") failed (%d)", g_paths.settings, GetLastError());
-        goto Failure;
-    }
+    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_paths.settings, GetLastError());
 
     u32 size = GetFileSize(file, 0);
-    if (size == INVALID_FILE_SIZE)
-    {
-        print("error: GetFileSize() failed (%d)", GetLastError());
-        goto Failure;
-    }
+    checkp_goto(size != INVALID_FILE_SIZE, Failure, "GetFileSize() failed (%d)", GetLastError());
 
     contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
     u32 bytes_read = 0;
     u32 ok = ReadFile(file, contents, size, &bytes_read, 0);
-    if (!ok || bytes_read != size)
-    {
-        print("error: ReadFile() failed (%d, %u/%u B)", GetLastError(), bytes_read, size);
-        goto Failure;
-    }
+    checkp_goto(ok && bytes_read == size, Failure, "ReadFile(\"%s\") failed (%d, %u/%u B)", g_paths.settings, GetLastError(), bytes_read, size);
 
     for (u32 i = 0; i < size; )
     {
@@ -769,11 +760,7 @@ void save_core_variables(void)
         FILE_ATTRIBUTE_NORMAL,
         0
     );
-    if (file == INVALID_HANDLE_VALUE)
-    {
-        print("error: CreateFileA(\"%s\") failed (%d)", g_paths.settings, GetLastError());
-        goto Failure;
-    }
+    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_paths.settings, GetLastError());
 
     u32 size = sizeof(g_core.vars.array[0]) * g_core.vars.count + 1;
     contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
@@ -788,15 +775,12 @@ void save_core_variables(void)
             g_core.vars.array[j].key,
             g_core.vars.array[j].value
         );
+        assert(bytes_to_write <= size);
     }
 
     u32 bytes_written = 0;
     u32 ok = WriteFile(file, contents, bytes_to_write, &bytes_written, 0);
-    if (!ok || bytes_written != bytes_to_write)
-    {
-        print("error: WriteFile() failed (%d, %u/%u B)", GetLastError(), bytes_written, bytes_to_write);
-        goto Failure;
-    }
+    checkp_goto(ok && bytes_written == bytes_to_write, Failure, "WriteFile(\"%s\") failed (%d, %u/%u B)", g_paths.settings, GetLastError(), bytes_written, bytes_to_write);
 
     print("saved core settings to \"%s\"", g_paths.settings);
 
@@ -819,22 +803,19 @@ void unload_core(void)
         g_core.api.retro_deinit();
     }
 
+    HeapFree(GetProcessHeap(), 0, g_core.vars.array);
     FreeLibrary(g_core.module);
     RtlZeroMemory(&g_core, sizeof(g_core));
 }
 
 void load_game(cstr path)
 {
-    assert(g_core.module, "attempted to load game when core was unloaded");
+    assertp(g_core.module, "attempted to load game when core was unloaded");
 
     unload_game();
 
     retro_game_info info = { .path = path };
-    if (!g_core.api.retro_load_game(&info))
-    {
-        print("error: failed to load game \"%s\"", path);
-        return;
-    }
+    checkp_return(g_core.api.retro_load_game(&info), "failed to load game \"%s\"", path);
 
     ModifyMenuA(g_ui.hmenu, MENU_LOAD_STATE_ID, MF_ENABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
     ModifyMenuA(g_ui.hmenu, MENU_SAVE_STATE_ID, MF_ENABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
@@ -876,11 +857,11 @@ i64 window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
 
     case WM_SIZE:
         RECT wr;
-        assert(GetClientRect(g_ui.hwnd, &wr), "GetClientRect() failed (%d)", GetLastError());
+        assert(GetClientRect(g_ui.hwnd, &wr));
         RECT r = {
             0, 0, wr.right, wr.bottom,
         };
-        assert(SetWindowPos(g_ui.draw_hwnd, 0, r.left, r.top, r.right, r.bottom, 0), "SetWindowPos() failed (%d)", GetLastError());
+        assert(SetWindowPos(g_ui.draw_hwnd, 0, r.left, r.top, r.right, r.bottom, 0));
         break;
 
     case WM_COMMAND:
@@ -923,15 +904,9 @@ i64 window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
 void core_log_callback(u32 level, cstr format, ...)
 {
     (void)level;
-
     c8 buffer[1024];
-
-    va_list args;
-    va_start(args, format);
-    u32 len = vsnprintf(buffer, sizeof(buffer), format, args);
-
+    u32 len = vsnprintf(buffer, sizeof(buffer), format, va_create(format));
     for (u32 i = 0; i < len; i++) if (buffer[i] < ' ' || buffer[i] > '~') buffer[i] = ' ';
-
     print("%s", buffer);
 }
 
@@ -946,7 +921,7 @@ u8 core_environment_callback(u32 cmd, ptr data)
         return true;
 
     case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-        *(cstr*)data = g_paths.system;
+        *(cstr*)data = g_paths.bios;
         return true;
 
     case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
@@ -1008,70 +983,45 @@ i16 core_input_state_callback(u32 port, u32 device, u32 index, u32 id)
     return 0;
 }
 
-cstr get_core_variable(cstr key)
+u32 str_equals(cstr a, cstr b, u32 minsize)
+{
+    for (u32 i = 0; i < minsize && a[i] == b[i]; i++)
+        if (!a[i]) return true;
+    return false;
+}
+
+u32 get_core_variable_idx(cstr key)
 {
     for (u32 i = 0; i < g_core.vars.count; i++)
-    {
-        c8 *k = g_core.vars.array[i].key;
-        for (u32 j = 0; j < countof(g_core.vars.array[i].key) && k[j] == key[j]; j++)
-        {
-            if (!k[j])
-            {
-                if (!key[j]) return g_core.vars.array[i].value;
-                break;
-            }
-        }
-    }
-    return 0;
+        if (str_equals(key, g_core.vars.array[i].key, sizeof(g_core.vars.array[i].key)))
+            return i;
+    return INVALID_IDX;
+}
+
+cstr get_core_variable(cstr key)
+{
+    u32 i = get_core_variable_idx(key);
+    return (i != INVALID_IDX) ? (g_core.vars.array[i].value) : (0);
 }
 
 void update_core_variable(cstr key, cstr value)
 {
-    u32 var_idx = g_core.vars.count;
+    u32 var_idx = get_core_variable_idx(key);
+    if (var_idx == INVALID_IDX) var_idx = g_core.vars.count;
 
-    for (u32 i = 0; i < g_core.vars.count && i != var_idx; i++)
+    if (g_core.vars.count == g_core.vars.allocated)
     {
-        c8 *k = g_core.vars.array[i].key;
-        for (u32 j = 0; j < countof(g_core.vars.array[i].key) && k[j] == key[j]; j++)
-        {
-            if (!k[j])
-            {
-                if (!key[j]) var_idx = i;
-                break;
-            }
-        }
+        g_core.vars.allocated <<= 1;
+        g_core.vars.array = HeapReAlloc(
+            GetProcessHeap(),
+            HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
+            g_core.vars.array,
+            sizeof(g_core.vars.array[0]) * g_core.vars.allocated
+        );
     }
 
-    if (!g_core.vars.array || g_core.vars.count == g_core.vars.allocated)
-    {
-        g_core.vars.allocated = (g_core.vars.allocated) ? (g_core.vars.allocated << 1) : (8);
-        if (g_core.vars.array)
-        {
-            g_core.vars.array = HeapReAlloc(
-                GetProcessHeap(),
-                HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
-                g_core.vars.array,
-                sizeof(g_core.vars.array[0]) * g_core.vars.allocated
-            );
-        }
-        else
-        {
-            g_core.vars.array = HeapAlloc(
-                GetProcessHeap(),
-                HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
-                sizeof(g_core.vars.array[0]) * g_core.vars.allocated
-            );
-        }
-    }
-
-    u32 i;
-    for (i = 0; i < countof(g_core.vars.array[0].key) - 1 && key[i]; i++)
-        g_core.vars.array[var_idx].key[i] = key[i];
-    g_core.vars.array[var_idx].key[i] = '\0';
-
-    for (i = 0; i < countof(g_core.vars.array[0].value) - 1 && value[i]; i++)
-        g_core.vars.array[var_idx].value[i] = value[i];
-    g_core.vars.array[var_idx].value[i] = '\0';
+    snprintf(g_core.vars.array[var_idx].key, sizeof(g_core.vars.array[var_idx].key), "%s", key);
+    snprintf(g_core.vars.array[var_idx].value, sizeof(g_core.vars.array[var_idx].value), "%s", value);
 
     if (var_idx == g_core.vars.count)
         g_core.vars.count++;
@@ -1086,14 +1036,8 @@ void present_frame(void)
 
 u8 open_file_dialog(u8 save, cstr title, cstr filename, cstr extensions, c8 *path, u32 pathmax)
 {
-    if (filename)
-    {
-        snprintf(path, pathmax, "%s", filename);
-    }
-    else
-    {
-        RtlZeroMemory(path, pathmax);
-    }
+    path[0] = '\0';
+    if (filename) snprintf(path, pathmax, "%s", filename);
 
     OPENFILENAMEA info = {
         .lStructSize = sizeof(info),
@@ -1116,22 +1060,16 @@ void print(cstr format, ...)
 
     c8 buffer[1024];
 
-    va_list args;
-    va_start(args, format);
-    u32 len = vsnprintf(buffer, sizeof(buffer) - 2, format, args);
+    u32 len = vsnprintf(buffer, sizeof(buffer) - 2, format, va_create(format));
     buffer[len++] = '\n';
-
     WriteConsoleA(g_log.stdout, buffer, len, 0, 0);
-
     buffer[len++] = '\0';
     OutputDebugStringA(buffer);
 }
 
 u32 snprintf(c8 *buffer, u32 maxsize, cstr format, ...)
 {
-    va_list args;
-    va_start(args, format);
-    return vsnprintf(buffer, maxsize, format, args);
+    return vsnprintf(buffer, maxsize, format, va_create(format));
 }
 
 u32 vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args)
