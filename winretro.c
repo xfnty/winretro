@@ -15,6 +15,7 @@
 #define FILE_ATTRIBUTE_DIRECTORY         0x00000010
 #define INVALID_FILE_SIZE                0xFFFFFFFFu
 #define ERROR_FILE_NOT_FOUND             2
+#define ERROR_ALREADY_EXISTS             183
 #define HEAP_GENERATE_EXCEPTIONS         0x00000004
 #define HEAP_ZERO_MEMORY                 0x00000008
 #define INVALID_HANDLE_VALUE             (ptr)-1
@@ -416,7 +417,7 @@ u32  CreateDirectoryA(cstr path, ptr security);
 
 /* function declarations */
 void _start(void);
-void set_root(void);
+void init_paths(void);
 void init_logging(void);
 void init_ui(void);
 void free_ui(void);
@@ -448,8 +449,6 @@ u32  vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args);
 
 /* variables */
 u32 _fltused=1;
-
-c8 g_root[512];
 
 struct {
     u32 enabled;
@@ -483,19 +482,22 @@ struct {
             c8 value[32];
         } *array;
     } vars;
-    struct {
-        c8 save[512];
-        c8 bios[512];
-        c8 settings[512];
-    } paths;
 } g_core;
+
+struct {
+    c8 root[512];
+    c8 save[512];
+    c8 bios[512];
+    c8 settings[512];
+    c8 settings_file[512];
+} g_paths;
 
 
 /* function definitions */
 void _start(void)
 {
-    set_root();
     init_logging();
+    init_paths();
     init_ui();
 
     while (!g_ui.was_exit_requested)
@@ -509,11 +511,23 @@ void _start(void)
     ExitProcess(0);
 }
 
-void set_root(void)
+void init_paths(void)
 {
-    u32 l = GetModuleFileNameA(0, g_root, sizeof(g_root) - 1);
-    while (g_root[l] != '\\') l--;
-    g_root[l] = '\0';
+    u32 l = GetModuleFileNameA(0, g_paths.root, sizeof(g_paths.root) - 1);
+    while (g_paths.root[l] != '\\') l--;
+    g_paths.root[l] = '\0';
+
+    snprintf(g_paths.save, sizeof(g_paths.save), "%s\\save", g_paths.root);
+    snprintf(g_paths.bios, sizeof(g_paths.bios), "%s\\bios", g_paths.root);
+    snprintf(g_paths.settings, sizeof(g_paths.settings), "%s\\settings", g_paths.root);
+    g_paths.settings_file[0] = '\0';
+
+    cstr array[] = { g_paths.save, g_paths.bios, g_paths.settings };
+    for (u32 i = 0; i < countof(array); i++)
+    {
+        if (!CreateDirectoryA(array[i], 0) && GetLastError() != ERROR_ALREADY_EXISTS)
+            print("CreateDirectoryA(\"%s\") failed (%d)", array[i], GetLastError());
+    }
 }
 
 void init_logging(void)
@@ -665,15 +679,7 @@ void load_core(cstr path)
 
     g_core.api.retro_get_system_info(&g_core.info);
 
-    snprintf(g_core.paths.save, sizeof(g_core.paths.save), "%s\\save", g_root);
-    snprintf(g_core.paths.bios, sizeof(g_core.paths.bios), "%s\\bios", g_root);
-    if (!(GetFileAttributesA(g_core.paths.save) & FILE_ATTRIBUTE_DIRECTORY)) assertp(CreateDirectoryA(g_core.paths.save, 0), "couldn't create save directory \"%s\" (%d)", g_core.paths.save, GetLastError());
-    if (!(GetFileAttributesA(g_core.paths.bios) & FILE_ATTRIBUTE_DIRECTORY)) assertp(CreateDirectoryA(g_core.paths.bios, 0), "couldn't create bios directory \"%s\" (%d)", g_core.paths.bios, GetLastError());
-
-    snprintf(g_core.paths.settings, sizeof(g_core.paths.settings), "%s\\settings", g_root);
-    if (!(GetFileAttributesA(g_core.paths.settings) & FILE_ATTRIBUTE_DIRECTORY)) assertp(CreateDirectoryA(g_core.paths.settings, 0), "couldn't create settings directory \"%s\" (%d)", g_core.paths.settings, GetLastError());
-
-    snprintf(g_core.paths.settings, sizeof(g_core.paths.settings), "%s\\settings\\%s.ini", g_root, g_core.info.library_name);
+    snprintf(g_paths.settings_file, sizeof(g_paths.settings_file), "%s\\%s.ini", g_paths.settings, g_core.info.library_name);
     load_core_variables();
 
     g_core.api.retro_set_environment(core_environment_callback);
@@ -707,7 +713,7 @@ void load_core_variables(void)
     c8 *contents = 0;
 
     ptr file = CreateFileA(
-        g_core.paths.settings,
+        g_paths.settings_file,
         GENERIC_READ,
         FILE_SHARE_READ,
         0,
@@ -715,7 +721,7 @@ void load_core_variables(void)
         FILE_ATTRIBUTE_NORMAL,
         0
     );
-    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_core.paths.settings, GetLastError());
+    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_paths.settings_file, GetLastError());
 
     u32 size = GetFileSize(file, 0);
     checkp_goto(size != INVALID_FILE_SIZE, Failure, "GetFileSize() failed (%d)", GetLastError());
@@ -723,7 +729,7 @@ void load_core_variables(void)
     contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
     u32 bytes_read = 0;
     u32 ok = ReadFile(file, contents, size, &bytes_read, 0);
-    checkp_goto(ok && bytes_read == size, Failure, "ReadFile(\"%s\") failed (%d, %u/%u B)", g_core.paths.settings, GetLastError(), bytes_read, size);
+    checkp_goto(ok && bytes_read == size, Failure, "ReadFile(\"%s\") failed (%d, %u/%u B)", g_paths.settings_file, GetLastError(), bytes_read, size);
 
     for (u32 i = 0; i < size; )
     {
@@ -748,7 +754,7 @@ void load_core_variables(void)
         update_core_variable(key, value);
     }
 
-    print("loaded core settings from \"%s\"", g_core.paths.settings);
+    print("loaded core settings from \"%s\"", g_paths.settings_file);
 
     Failure:
     CloseHandle(file);
@@ -761,7 +767,7 @@ void save_core_variables(void)
     c8 *contents = 0;
 
     ptr file = CreateFileA(
-        g_core.paths.settings,
+        g_paths.settings_file,
         GENERIC_WRITE,
         FILE_SHARE_READ,
         0,
@@ -769,7 +775,7 @@ void save_core_variables(void)
         FILE_ATTRIBUTE_NORMAL,
         0
     );
-    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_core.paths.settings, GetLastError());
+    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_paths.settings_file, GetLastError());
 
     u32 size = sizeof(g_core.vars.array[0]) * g_core.vars.count + 1;
     contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
@@ -789,9 +795,9 @@ void save_core_variables(void)
 
     u32 bytes_written = 0;
     u32 ok = WriteFile(file, contents, bytes_to_write, &bytes_written, 0);
-    checkp_goto(ok && bytes_written == bytes_to_write, Failure, "WriteFile(\"%s\") failed (%d, %u/%u B)", g_core.paths.settings, GetLastError(), bytes_written, bytes_to_write);
+    checkp_goto(ok && bytes_written == bytes_to_write, Failure, "WriteFile(\"%s\") failed (%d, %u/%u B)", g_paths.settings_file, GetLastError(), bytes_written, bytes_to_write);
 
-    print("saved core settings to \"%s\"", g_core.paths.settings);
+    print("saved core settings to \"%s\"", g_paths.settings_file);
 
     Failure:
     CloseHandle(file);
@@ -812,6 +818,7 @@ void unload_core(void)
         g_core.api.retro_deinit();
     }
 
+    g_paths.settings_file[0] = '\0';
     HeapFree(GetProcessHeap(), 0, g_core.vars.array);
     FreeLibrary(g_core.module);
     RtlZeroMemory(&g_core, sizeof(g_core));
@@ -930,11 +937,11 @@ u8 core_environment_callback(u32 cmd, ptr data)
         return true;
 
     case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-        *(cstr*)data = g_core.paths.bios;
+        *(cstr*)data = g_paths.bios;
         return true;
 
     case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
-        *(cstr*)data = g_core.paths.save;
+        *(cstr*)data = g_paths.save;
         return true;
 
     case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
