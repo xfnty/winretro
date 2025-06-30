@@ -32,6 +32,7 @@
 #define WM_CLOSE                         0x0010
 #define WM_SIZE                          0x0005
 #define WM_COMMAND                       0x0111
+#define WM_ERASEBKGND                    0x0014
 #define PM_REMOVE                        0x0001
 #define CS_OWNDC                         0x0020
 #define PFD_DOUBLEBUFFER                 0x00000001
@@ -89,6 +90,104 @@
 #else
     #define WINAPI __attribute__((stdcall))
 #endif
+
+#define RETRO_API_DECL_LIST \
+    _X(void,  retro_set_environment,            retro_environment_t callback) \
+    _X(void,  retro_set_video_refresh,          retro_video_callback_t callback) \
+    _X(void,  retro_set_audio_sample,           retro_audio_sample_t callback) \
+    _X(void,  retro_set_audio_sample_batch,     retro_audio_sample_batch_t callback) \
+    _X(void,  retro_set_input_poll,             retro_input_poll_t callback) \
+    _X(void,  retro_set_input_state,            retro_input_state_t callback) \
+    _X(void,  retro_init,                       void) \
+    _X(void,  retro_deinit,                     void) \
+    _X(u32,   retro_api_version,                void) \
+    _X(void,  retro_get_system_info,            retro_system_info* info) \
+    _X(void,  retro_get_system_av_info,         retro_system_av_info* avinfo) \
+    _X(void,  retro_set_controller_port_device, u32 port, u32 device) \
+    _X(void,  retro_reset,                      void) \
+    _X(void,  retro_run,                        void) \
+    _X(u64,   retro_serialize_size,             void) \
+    _X(u8,    retro_serialize,                  ptr data, u64 len) \
+    _X(u8,    retro_unserialize,                const ptr data, u64 len) \
+    _X(void,  retro_cheat_reset,                void) \
+    _X(void,  retro_cheat_set,                  u32 index, u8 enabled, cstr code) \
+    _X(u8,    retro_load_game,                  const retro_game_info *info) \
+    _X(u8,    retro_load_game_special,          u32 type, const retro_game_info *info, u64 count) \
+    _X(void,  retro_unload_game,                void) \
+    _X(u32,   retro_get_region,                 void) \
+    _X(ptr,   retro_get_memory_data,            u32 type) \
+    _X(u64,   retro_get_memory_size,            u32 type)
+
+#define OPENGL_EXT_API_DECL_LIST \
+    _X(ptr,  wglCreateContextAttribsARB, ptr hdc, ptr share, i32 *attrs) \
+    _X(u32,  wglSwapIntervalEXT,         i32 interval)
+
+#define OS_IMPORT_LIB_LIST \
+    _X(OS_KERNEL32, "kernel32.dll") \
+    _X(OS_USER32,   "user32.dll") \
+    _X(OS_OPENGL32, "opengl32.dll") \
+    _X(OS_COMDLG32, "comdlg32.dll") \
+    _X(OS_SHELL32,  "shell32.dll") \
+    _X(OS_GDI32,    "gdi32.dll")
+
+#define OS_API_DECL_LIST \
+    _X(OS_KERNEL32, u32,  WINAPI, AttachConsole,       u32 pid) \
+    _X(OS_KERNEL32, ptr,  WINAPI, GetStdHandle,        u32 id) \
+    _X(OS_KERNEL32, u32,  ,       IsDebuggerPresent,   void) \
+    _X(OS_KERNEL32, void, ,       ExitProcess,         u32 code) \
+    _X(OS_KERNEL32, u32,  ,       GetLastError,        void) \
+    _X(OS_KERNEL32, u32,  ,       WriteConsoleA,       ptr con, const ptr buf, u32 bytes, u32 *written, ptr _) \
+    _X(OS_KERNEL32, u32,  ,       OutputDebugStringA,  cstr str) \
+    _X(OS_KERNEL32, ptr,  ,       GetModuleHandleA,    cstr name) \
+    _X(OS_KERNEL32, u32,  ,       FreeLibrary,         ptr module) \
+    _X(OS_KERNEL32, void, ,       RtlZeroMemory,       ptr buffer, u64 size) \
+    _X(OS_KERNEL32, ptr,  ,       CreateFileA,         cstr path, u32 access, u32 share, ptr security, u32 create, u32 flags, ptr template) \
+    _X(OS_KERNEL32, u32,  ,       ReadFile,            ptr file, ptr buffer, u32 bytes_to_read, u32 *bytes_read, ptr overlapped) \
+    _X(OS_KERNEL32, u32,  ,       WriteFile,           ptr file, ptr buffer, u32 bytes_to_write, u32 *bytes_written, ptr overlapped) \
+    _X(OS_KERNEL32, u32,  ,       GetFileSize,         ptr file, u32 *msdword) \
+    _X(OS_KERNEL32, u32,  ,       CloseHandle,         ptr handle) \
+    _X(OS_KERNEL32, ptr,  ,       GetProcessHeap,      void) \
+    _X(OS_KERNEL32, ptr,  ,       HeapAlloc,           ptr heap, u32 flags, u64 size) \
+    _X(OS_KERNEL32, ptr,  ,       HeapReAlloc,         ptr heap, u32 flags, ptr memory, u64 size) \
+    _X(OS_KERNEL32, u32,  ,       HeapFree,            ptr heap, u32 flags, ptr memory) \
+    _X(OS_KERNEL32, u32,  ,       GetModuleFileNameA,  ptr module, c8 *path, u32 pathmax) \
+    _X(OS_KERNEL32, u32,  ,       GetFileAttributesA,  cstr path) \
+    _X(OS_KERNEL32, u32,  ,       CreateDirectoryA,    cstr path, ptr security) \
+    _X(OS_USER32,   ptr,  ,       CreateMenu,          void) \
+    _X(OS_USER32,   ptr,  ,       LoadCursorA,         ptr hinst, cstr name) \
+    _X(OS_USER32,   u16,  ,       RegisterClassA,      WNDCLASSA *cls) \
+    _X(OS_USER32,   i64,  ,       DefWindowProcA,      ptr hwnd, u32 msg, u64 wp, i64 lp) \
+    _X(OS_USER32,   ptr,  ,       CreateWindowExA,     u32 exstyle, cstr cls, cstr title, u32  style, i32  x, i32  y, i32  w, i32  h, ptr hwnd_parent, ptr hmenu, ptr hinst, ptr lp) \
+    _X(OS_USER32,   i64,  ,       SendMessageA,        ptr hwnd, u32 msg, u64 wp, i64 lp) \
+    _X(OS_USER32,   u32,  ,       ShowWindow,          ptr hwnd, i32 show) \
+    _X(OS_USER32,   u32,  ,       PeekMessageA,        MSG *msg, ptr hwnd, u32 fmin, u32 fmax, u32 flags) \
+    _X(OS_USER32,   u32,  ,       TranslateMessage,    MSG *msg) \
+    _X(OS_USER32,   u32,  ,       DispatchMessageA,    MSG *msg) \
+    _X(OS_USER32,   u32,  ,       GetClientRect,       ptr hwnd, RECT *r) \
+    _X(OS_USER32,   u32,  ,       AppendMenuA,         ptr hmenu, u32 flags, u64 item, cstr str) \
+    _X(OS_USER32,   u32,  ,       ModifyMenuA,         ptr hmenu, u32 id, u32 flags, u64 item, cstr str) \
+    _X(OS_USER32,   u32,  ,       SetWindowPos,        ptr hwnd, ptr insert_type, i32 x, i32 y, i32 w, i32 h, u32 flags) \
+    _X(OS_USER32,   ptr,  ,       GetDC,               ptr hwnd) \
+    _X(OS_USER32,   i32,  ,       ReleaseDC,           ptr hwnd, ptr hdc) \
+    _X(OS_USER32,   u32,  ,       DestroyWindow,       ptr hwnd) \
+    _X(OS_USER32,   u32,  ,       UnregisterClassA,    cstr cls, ptr hinst) \
+    _X(OS_USER32,   ptr,  ,       BeginPaint,          ptr hwnd, PAINTSTRUCT *paint) \
+    _X(OS_USER32,   u32,  ,       EndPaint,            ptr hwnd, const PAINTSTRUCT *paint) \
+    _X(OS_GDI32,    i32,  ,       ChoosePixelFormat,   ptr hdc, PIXELFORMATDESCRIPTOR *pfd) \
+    _X(OS_GDI32,    i32,  ,       DescribePixelFormat, ptr hdc, i32 pixel_format, u32 pfd_size, PIXELFORMATDESCRIPTOR *pfd) \
+    _X(OS_GDI32,    u32,  ,       SetPixelFormat,      ptr hdc, i32 pixel_format, PIXELFORMATDESCRIPTOR *pfd) \
+    _X(OS_GDI32,    ptr,  ,       GetStockObject,      i32 id) \
+    _X(OS_GDI32,    u32,  ,       SwapBuffers,         ptr hdc) \
+    _X(OS_OPENGL32, ptr,  WINAPI, wglCreateContext,    ptr hdc) \
+    _X(OS_OPENGL32, u32,  WINAPI, wglDeleteContext,    ptr hglrc) \
+    _X(OS_OPENGL32, ptr,  WINAPI, wglGetProcAddress,   cstr symbol) \
+    _X(OS_OPENGL32, u32,  WINAPI, wglMakeCurrent,      ptr hdc, ptr hglrc) \
+    _X(OS_OPENGL32, void, WINAPI, glClear,             u32 mask) \
+    _X(OS_OPENGL32, cstr, WINAPI, glGetString,         u32 id) \
+    _X(OS_OPENGL32, cstr, WINAPI, glClearColor,        f32 r, f32 g, f32 b, f32 a) \
+    _X(OS_COMDLG32, u32,  WINAPI, GetOpenFileNameA,    OPENFILENAMEA *ofn) \
+    _X(OS_COMDLG32, u32,  WINAPI, GetSaveFileNameA,    OPENFILENAMEA *ofn) \
+    _X(OS_SHELL32,  ptr,  WINAPI, ShellExecuteA,       ptr hwnd, cstr op, cstr file, cstr params, cstr dir, i32 show) \
 
 
 /* typedefs */
@@ -206,6 +305,15 @@ struct OPENFILENAMEA {
     u32  dwReserved;
     u32  FlagsEx;
 };
+typedef struct PAINTSTRUCT PAINTSTRUCT;
+struct PAINTSTRUCT {
+    ptr  hdc;
+    u32  fErase;
+    RECT rcPaint;
+    u32  fRestore;
+    u32  fIncUpdate;
+    u8   rgbReserved[32];
+};
 
 typedef struct retro_system_info retro_system_info;
 struct retro_system_info {
@@ -274,6 +382,14 @@ enum retro_hw_context_type {
    RETRO_HW_CONTEXT_OPENGLES_VERSION = 5,
 };
 
+typedef enum os_import_lib os_import_lib;
+enum os_import_lib {
+    #define _X(_id, _file) _id,
+    OS_IMPORT_LIB_LIST
+    #undef _X
+    _OS_IMPORT_LIB_COUNT
+};
+
 
 /* macros */
 #define countof(_a) (sizeof(_a)/sizeof((_a)[0]))
@@ -281,21 +397,11 @@ enum retro_hw_context_type {
 #define va_arg(_list, _T) ( ( sizeof(_T) > 8) ? (**(_T**)((_list += 8) - 8)) : ( *(_T* )((_list += 8) - 8)) )
 
 #if defined(_MSC_VER)
-    #define assert(_x) do { \
-            if (!(_x)) { \
-                print("assertion " #_x " failed (%s():%d)", __func__, __LINE__); \
-                __debugbreak(); \
-            } \
-        } while (0)
+    #define assert(_x) do { if (!(_x)) { __debugbreak(); } } while (0)
 #else
-    #define assert(_x) do { \
-            if (!(_x)) { \
-                print("assertion " #_x " failed (%s():%d)", __func__, __LINE__); \
-                __asm__("int3"); \
-                __builtin_unreachable(); \
-            } \
-        } while (0)
+    #define assert(_x) do { if (!(_x)) { __asm__("int3"); __builtin_unreachable(); } } while (0)
 #endif
+
 #define assertp(_x, _m, ...) do { \
         if (!(_x)) { \
             print(_m, ##__VA_ARGS__); \
@@ -316,109 +422,14 @@ enum retro_hw_context_type {
         } \
     } while (0)
 
-#define RETRO_API_DECL_LIST \
-    _X(void,  retro_set_environment,            retro_environment_t callback) \
-    _X(void,  retro_set_video_refresh,          retro_video_callback_t callback) \
-    _X(void,  retro_set_audio_sample,           retro_audio_sample_t callback) \
-    _X(void,  retro_set_audio_sample_batch,     retro_audio_sample_batch_t callback) \
-    _X(void,  retro_set_input_poll,             retro_input_poll_t callback) \
-    _X(void,  retro_set_input_state,            retro_input_state_t callback) \
-    _X(void,  retro_init,                       void) \
-    _X(void,  retro_deinit,                     void) \
-    _X(u32,   retro_api_version,                void) \
-    _X(void,  retro_get_system_info,            retro_system_info* info) \
-    _X(void,  retro_get_system_av_info,         retro_system_av_info* avinfo) \
-    _X(void,  retro_set_controller_port_device, u32 port, u32 device) \
-    _X(void,  retro_reset,                      void) \
-    _X(void,  retro_run,                        void) \
-    _X(u64,   retro_serialize_size,             void) \
-    _X(u8,    retro_serialize,                  ptr data, u64 len) \
-    _X(u8,    retro_unserialize,                const ptr data, u64 len) \
-    _X(void,  retro_cheat_reset,                void) \
-    _X(void,  retro_cheat_set,                  u32 index, u8 enabled, cstr code) \
-    _X(u8,    retro_load_game,                  const retro_game_info *info) \
-    _X(u8,    retro_load_game_special,          u32 type, const retro_game_info *info, u64 count) \
-    _X(void,  retro_unload_game,                void) \
-    _X(u32,   retro_get_region,                 void) \
-    _X(ptr,   retro_get_memory_data,            u32 type) \
-    _X(u64,   retro_get_memory_size,            u32 type)
-
-#define OPENGL_EXT_API_DECL_LIST \
-    _X(ptr,  wglCreateContextAttribsARB, ptr hdc, ptr share, i32 *attrs) \
-    _X(u32,  wglSwapIntervalEXT,         i32 interval)
-
 
 /* imports */
-u32  WINAPI AttachConsole(u32 pid);
-ptr  WINAPI GetStdHandle(u32 id);
-u32  IsDebuggerPresent(void);
-void ExitProcess(u32 code);
-u32  GetLastError(void);
-u32  WriteConsoleA(ptr console, ptr buffer, u32 bytes, u32 *written, ptr _reserved);
-void OutputDebugStringA(cstr str);
-ptr  GetModuleHandleA(cstr name);
-ptr  LoadCursorA(ptr hinst, cstr name);
-u16  RegisterClassA(WNDCLASSA *cls);
-i64  DefWindowProcA(ptr hwnd, u32 msg, u64 wp, i64 lp);
-ptr CreateWindowExA(
-    u32  exstyle,
-    cstr cls,
-    cstr title,
-    u32  style,
-    i32  x,
-    i32  y,
-    i32  w,
-    i32  h,
-    ptr  hwnd_parent,
-    ptr  hmenu,
-    ptr  hinst,
-    ptr  lp
-);
-i64  SendMessageA(ptr hwnd, u32 msg, u64 wp, i64 lp);
-u32  ShowWindow(ptr hwnd, i32 show);
-u32  PeekMessageA(MSG *msg, ptr hwnd, u32 fmin, u32 fmax, u32 flags);
-u32  TranslateMessage(MSG *msg);
-u32  DispatchMessageA(MSG *msg);
-u32  GetClientRect(ptr hwnd, RECT *r);
-u32  AppendMenuA(ptr hmenu, u32 flags, u64 item, cstr str);
-u32  ModifyMenuA(ptr hmenu, u32 id, u32 flags, u64 item, cstr str);
-u32  SetWindowPos(ptr hwnd, ptr insert_type, i32 x, i32 y, i32 w, i32 h, u32 flags);
-ptr  GetDC(ptr hwnd);
-i32  ReleaseDC(ptr hwnd, ptr hdc);
-u32  DestroyWindow(ptr hwnd);
-u32  UnregisterClassA(cstr cls, ptr hinst);
-i32  ChoosePixelFormat(ptr hdc, PIXELFORMATDESCRIPTOR *pfd);
-i32  DescribePixelFormat(ptr hdc, i32 pixel_format, u32 pfd_size, PIXELFORMATDESCRIPTOR *pfd);
-u32  SetPixelFormat(ptr hdc, i32 pixel_format, PIXELFORMATDESCRIPTOR *pfd);
-ptr  WINAPI wglCreateContext(ptr hdc);
-u32  WINAPI wglDeleteContext(ptr hglrc);
-ptr  WINAPI wglGetProcAddress(cstr symbol);
-u32  WINAPI wglMakeCurrent(ptr hdc, ptr hglrc);
-u32  WINAPI SwapBuffers(ptr hdc);
-ptr  LoadLibraryA(cstr name);
-u32  FreeLibrary(ptr module);
-ptr  GetProcAddress(ptr module, cstr symbol);
-void RtlZeroMemory(ptr buffer, u64 size);
-ptr  CreateFileA(cstr path, u32 access, u32 share, ptr security, u32 create, u32 flags, ptr template);
-u32  ReadFile(ptr file, ptr buffer, u32 bytes_to_read, u32 *bytes_read, ptr overlapped);
-u32  WriteFile(ptr file, ptr buffer, u32 bytes_to_write, u32 *bytes_written, ptr overlapped);
-u32  GetFileSize(ptr file, u32 *msdword);
-u32  CloseHandle(ptr handle);
-ptr  GetProcessHeap(void);
-ptr  HeapAlloc(ptr heap, u32 flags, u64 size);
-ptr  HeapReAlloc(ptr heap, u32 flags, ptr memory, u64 size);
-u32  HeapFree(ptr heap, u32 flags, ptr memory);
-ptr  CreateMenu(void);
-u32  WINAPI GetOpenFileNameA(OPENFILENAMEA *ofn);
-u32  WINAPI GetSaveFileNameA(OPENFILENAMEA *ofn);
-ptr  ShellExecuteA(ptr hwnd, cstr op, cstr file, cstr params, cstr dir, i32 show);
-u32  GetModuleFileNameA(ptr module, c8 *path, u32 pathmax);
-u32  GetFileAttributesA(cstr path);
-u32  CreateDirectoryA(cstr path, ptr security);
-ptr  GetStockObject(i32 id);
-void WINAPI glClear(u32 mask);
-cstr WINAPI glGetString(u32 name);
-void WINAPI glClearColor(f32 r, f32 g, f32 b, f32 a);
+ptr LoadLibraryA(cstr name);
+ptr GetProcAddress(ptr module, cstr symbol);
+
+#define _X(_lib, _ret, _callconv, _name, _arg1, ...) _ret (_callconv *_name)(_arg1, ##__VA_ARGS__);
+OS_API_DECL_LIST
+#undef _X
 
 #define _X(_ret, _name, _arg1, ...)  _ret (WINAPI *_name)(_arg1, ##__VA_ARGS__);
 OPENGL_EXT_API_DECL_LIST
@@ -427,6 +438,7 @@ OPENGL_EXT_API_DECL_LIST
 
 /* function declarations */
 void _start(void);
+void load_os_api(void);
 void init_paths(void);
 void init_logging(void);
 void init_ui(void);
@@ -511,21 +523,36 @@ struct {
 /* function definitions */
 void _start(void)
 {
+    load_os_api();
     init_logging();
     init_paths();
     init_ui();
-    init_gl();
 
     while (!g_ui.was_exit_requested)
     {
         process_ui_events();
-        // present_frame();
+
+        if (g_gl.hglrc)
+            present_frame();
     }
 
     unload_core();
     free_gl();
     free_ui();
     ExitProcess(0);
+}
+
+void load_os_api(void)
+{   
+    ptr libs[_OS_IMPORT_LIB_COUNT];
+
+    #define _X(_id, _file) assert(libs[_id] = LoadLibraryA(_file));
+    OS_IMPORT_LIB_LIST
+    #undef _X
+    
+    #define _X(_lib, _ret, _callconv, _name, _arg1, ...) assert(_name = GetProcAddress(libs[_lib], #_name));
+    OS_API_DECL_LIST
+    #undef _X
 }
 
 void init_paths(void)
@@ -865,6 +892,8 @@ void load_game(cstr path)
     retro_game_info info = { .path = path };
     checkp_return(g_core.api.retro_load_game(&info), "failed to load game \"%s\"", path);
 
+    init_gl();
+
     ModifyMenuA(g_ui.hmenu, MENU_LOAD_STATE_ID, MF_ENABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
     ModifyMenuA(g_ui.hmenu, MENU_SAVE_STATE_ID, MF_ENABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
 }
@@ -878,6 +907,7 @@ void unload_game(void)
         return;
 
     g_core.api.retro_unload_game();
+    free_gl();
 }
 
 void process_ui_events(void)
@@ -943,6 +973,10 @@ i64 window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
             ShellExecuteA(0, "open", "https://github.com/xfnty/tiny-libretro-frontend", 0, 0, SW_SHOWNORMAL);
             break;
         }
+        break;
+
+    case WM_ERASEBKGND:
+        if (g_gl.hglrc) return 1;
         break;
     }
     
@@ -1077,7 +1111,7 @@ void update_core_variable(cstr key, cstr value)
 
 void present_frame(void)
 {
-    glClearColor(1, 1, 1, 1);
+    glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     SwapBuffers(g_gl.hdc);
 }
