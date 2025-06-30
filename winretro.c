@@ -42,6 +42,7 @@
 #define OFN_PATHMUSTEXIST                0x00000800
 #define OFN_FILEMUSTEXIST                0x00001000
 #define OFN_OVERWRITEPROMPT              0x00000002
+#define WHITE_BRUSH                      0
 
 #define MF_POPUP                         0x00000010L
 #define MF_ENABLED                       0x00000000L
@@ -179,7 +180,6 @@ typedef ptr (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(
     i32 *attribList
 );
 typedef u32 (WINAPI *PFNWGLSWAPINTERVALEXTPROC)(i32 interval);
-typedef i32 (WINAPI *PFNWGLGETSWAPINTERVALEXTPROC)(void);
 typedef struct OPENFILENAMEA OPENFILENAMEA;
 struct OPENFILENAMEA {
     u32  lStructSize;
@@ -343,6 +343,10 @@ enum retro_hw_context_type {
     _X(ptr,   retro_get_memory_data,            u32 type) \
     _X(u64,   retro_get_memory_size,            u32 type)
 
+#define OPENGL_EXT_API_DECL_LIST \
+    _X(ptr,  wglCreateContextAttribsARB, ptr hdc, ptr share, i32 *attrs) \
+    _X(u32,  wglSwapIntervalEXT,         i32 interval)
+
 
 /* imports */
 u32  WINAPI AttachConsole(u32 pid);
@@ -380,6 +384,7 @@ u32  AppendMenuA(ptr hmenu, u32 flags, u64 item, cstr str);
 u32  ModifyMenuA(ptr hmenu, u32 id, u32 flags, u64 item, cstr str);
 u32  SetWindowPos(ptr hwnd, ptr insert_type, i32 x, i32 y, i32 w, i32 h, u32 flags);
 ptr  GetDC(ptr hwnd);
+i32  ReleaseDC(ptr hwnd, ptr hdc);
 u32  DestroyWindow(ptr hwnd);
 u32  UnregisterClassA(cstr cls, ptr hinst);
 i32  ChoosePixelFormat(ptr hdc, PIXELFORMATDESCRIPTOR *pfd);
@@ -390,9 +395,6 @@ u32  WINAPI wglDeleteContext(ptr hglrc);
 ptr  WINAPI wglGetProcAddress(cstr symbol);
 u32  WINAPI wglMakeCurrent(ptr hdc, ptr hglrc);
 u32  WINAPI SwapBuffers(ptr hdc);
-void WINAPI glClear(u32 mask);
-void WINAPI glClearColor(f32 r, f32 g, f32 b, f32 a);
-cstr WINAPI glGetString(u32 name);
 ptr  LoadLibraryA(cstr name);
 u32  FreeLibrary(ptr module);
 ptr  GetProcAddress(ptr module, cstr symbol);
@@ -413,6 +415,14 @@ ptr  ShellExecuteA(ptr hwnd, cstr op, cstr file, cstr params, cstr dir, i32 show
 u32  GetModuleFileNameA(ptr module, c8 *path, u32 pathmax);
 u32  GetFileAttributesA(cstr path);
 u32  CreateDirectoryA(cstr path, ptr security);
+ptr  GetStockObject(i32 id);
+void WINAPI glClear(u32 mask);
+cstr WINAPI glGetString(u32 name);
+void WINAPI glClearColor(f32 r, f32 g, f32 b, f32 a);
+
+#define _X(_ret, _name, _arg1, ...)  _ret (WINAPI *_name)(_arg1, ##__VA_ARGS__);
+OPENGL_EXT_API_DECL_LIST
+#undef _X
 
 
 /* function declarations */
@@ -420,6 +430,8 @@ void _start(void);
 void init_paths(void);
 void init_logging(void);
 void init_ui(void);
+void init_gl(void);
+void free_gl(void);
 void free_ui(void);
 void load_core(cstr path);
 void load_core_variables(void);
@@ -460,10 +472,13 @@ struct {
     ptr draw_hwnd;
     ptr hinst;
     ptr hmenu;
-    ptr hdc;
-    ptr hglrc;
     u32 was_exit_requested;
 } g_ui;
+
+struct {
+    ptr hdc;
+    ptr hglrc;
+} g_gl;
 
 struct {
     ptr module;
@@ -499,14 +514,16 @@ void _start(void)
     init_logging();
     init_paths();
     init_ui();
+    init_gl();
 
     while (!g_ui.was_exit_requested)
     {
         process_ui_events();
-        present_frame();
+        // present_frame();
     }
 
     unload_core();
+    free_gl();
     free_ui();
     ExitProcess(0);
 }
@@ -585,6 +602,7 @@ void init_ui(void)
         .lpszClassName = DRAWWNDCLASS_NAME,
         .lpfnWndProc = DefWindowProcA,
         .hCursor = LoadCursorA(0, IDC_ARROW),
+        .hbrBackground = GetStockObject(WHITE_BRUSH),
     };
     assert(RegisterClassA(&drawwndclass));
     g_ui.draw_hwnd = CreateWindowExA(
@@ -599,42 +617,56 @@ void init_ui(void)
         0
     );
     assert(g_ui.hwnd);
+    
+    ShowWindow(g_ui.hwnd, SW_SHOW);
+}
 
-    g_ui.hdc = GetDC(g_ui.draw_hwnd);
-    assert(g_ui.hdc);
+void init_gl(void)
+{
+    g_gl.hdc = GetDC(g_ui.draw_hwnd);
+    assert(g_gl.hdc);
     PIXELFORMATDESCRIPTOR pfd = {0};
     pfd.nSize = sizeof(pfd);
     pfd.nVersion = 1;
     pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER | PFD_SUPPORT_OPENGL;
     pfd.iPixelType = PFD_TYPE_RGBA;
     pfd.iLayerType = PFD_MAIN_PLANE;
-    int pixel_format = ChoosePixelFormat(g_ui.hdc, &pfd);
-    assert(DescribePixelFormat(g_ui.hdc, pixel_format, sizeof(pfd), &pfd));
-    assert(SetPixelFormat(g_ui.hdc, pixel_format, &pfd));
-    ptr tmp_gl = wglCreateContext(g_ui.hdc);
+    int pixel_format = ChoosePixelFormat(g_gl.hdc, &pfd);
+    assert(DescribePixelFormat(g_gl.hdc, pixel_format, sizeof(pfd), &pfd));
+    assert(SetPixelFormat(g_gl.hdc, pixel_format, &pfd));
+    ptr tmp_gl = wglCreateContext(g_gl.hdc);
     assert(tmp_gl);
-    assert(wglMakeCurrent(g_ui.hdc, tmp_gl));
-    PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB
-        = (PFNWGLCREATECONTEXTATTRIBSARBPROC)wglGetProcAddress("wglCreateContextAttribsARB");
-    assert(wglCreateContextAttribsARB);
-    PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT
-        = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
-    assert(wglSwapIntervalEXT);
+    assert(wglMakeCurrent(g_gl.hdc, tmp_gl));
+
+    ptr opengl32 = LoadLibraryA("opengl32.dll");
+    assert(opengl32);
+
+    #define _X(_ret, _name, _arg1, ...) assert(_name = wglGetProcAddress(#_name));
+    OPENGL_EXT_API_DECL_LIST
+    #undef _X
+
     assert(wglMakeCurrent(0, 0));
     assert(wglDeleteContext(tmp_gl));
-    g_ui.hglrc = wglCreateContextAttribsARB(g_ui.hdc, 0, (i32[]){
+    g_gl.hglrc = wglCreateContextAttribsARB(g_gl.hdc, 0, (i32[]){
         WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
         WGL_CONTEXT_MINOR_VERSION_ARB, 3,
         WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
         WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
         0
     });
-    assert(g_ui.hglrc);
-    assert(wglMakeCurrent(g_ui.hdc, g_ui.hglrc));
+    assert(g_gl.hglrc);
+    assert(wglMakeCurrent(g_gl.hdc, g_gl.hglrc));
     assert(wglSwapIntervalEXT(1));
-    print("using %s on %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
 
-    ShowWindow(g_ui.hwnd, SW_SHOW);
+    print("using %s on %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
+}
+
+void free_gl(void)
+{
+    wglMakeCurrent(0, 0);
+    wglDeleteContext(g_gl.hglrc);
+    ReleaseDC(g_ui.draw_hwnd, g_gl.hdc);
+    RtlZeroMemory(&g_gl, sizeof(g_gl));
 }
 
 void free_ui(void)
@@ -1045,9 +1077,9 @@ void update_core_variable(cstr key, cstr value)
 
 void present_frame(void)
 {
-    glClearColor(0, 0, 0, 1);
+    glClearColor(1, 1, 1, 1);
     glClear(GL_COLOR_BUFFER_BIT);
-    SwapBuffers(g_ui.hdc);
+    SwapBuffers(g_gl.hdc);
 }
 
 u8 open_file_dialog(u8 save, cstr title, cstr filename, cstr extensions, c8 *path, u32 pathmax)
