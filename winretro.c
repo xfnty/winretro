@@ -5,6 +5,9 @@
 #define WNDCLASS_NAME                    "libretro-frontend"
 #define DRAWWNDCLASS_NAME                "libretro-frontend-draw"
 
+#define CORE_SETTINGS_FILENAME_FORMAT "%s (Variables).ini"
+#define CORE_INPUTS_FILENAME_FORMAT   "%s (Inputs).ini"
+
 #define GENERIC_READ                     0x80000000
 #define GENERIC_WRITE                    0x40000000
 #define FILE_SHARE_READ                  0x00000001
@@ -120,7 +123,8 @@
 
 #define OPENGL_EXT_API_DECL_LIST \
     _X(ptr,  wglCreateContextAttribsARB, ptr hdc, ptr share, i32 *attrs) \
-    _X(u32,  wglSwapIntervalEXT,         i32 interval)
+    _X(u32,  wglSwapIntervalEXT,         i32 interval) \
+    _X(u32,  glGenFramebuffers,          i64 n, u32 *array)
 
 #define OS_IMPORT_LIB_LIST \
     _X(OS_KERNEL32, "kernel32.dll") \
@@ -182,6 +186,7 @@
     _X(OS_OPENGL32, u32,  WINAPI, wglDeleteContext,    ptr hglrc) \
     _X(OS_OPENGL32, ptr,  WINAPI, wglGetProcAddress,   cstr symbol) \
     _X(OS_OPENGL32, u32,  WINAPI, wglMakeCurrent,      ptr hdc, ptr hglrc) \
+    _X(OS_OPENGL32, u32,  WINAPI, glGetError,          void) \
     _X(OS_OPENGL32, void, WINAPI, glClear,             u32 mask) \
     _X(OS_OPENGL32, cstr, WINAPI, glGetString,         u32 id) \
     _X(OS_OPENGL32, cstr, WINAPI, glClearColor,        f32 r, f32 g, f32 b, f32 a) \
@@ -450,6 +455,8 @@ void load_core_variables(void);
 void save_core_variables(void);
 void unload_core(void);
 void load_game(cstr path);
+void load_game_state(cstr path);
+void save_game_state(cstr path);
 void unload_game(void);
 void process_ui_events(void);
 void present_frame(void);
@@ -490,6 +497,10 @@ struct {
 struct {
     ptr hdc;
     ptr hglrc;
+    u32 fbo;
+    u32 rbo;
+    u32 width;
+    u32 height;
 } g_gl;
 
 struct {
@@ -517,6 +528,7 @@ struct {
     c8 bios[512];
     c8 settings[512];
     c8 settings_file[512];
+    c8 input_settings_file[512];
 } g_paths;
 
 
@@ -565,6 +577,7 @@ void init_paths(void)
     snprintf(g_paths.bios, sizeof(g_paths.bios), "%s\\bios", g_paths.root);
     snprintf(g_paths.settings, sizeof(g_paths.settings), "%s\\settings", g_paths.root);
     g_paths.settings_file[0] = '\0';
+    g_paths.input_settings_file[0] = '\0';
 
     cstr array[] = { g_paths.save, g_paths.bios, g_paths.settings };
     for (u32 i = 0; i < countof(array); i++)
@@ -685,6 +698,9 @@ void init_gl(void)
     assert(wglMakeCurrent(g_gl.hdc, g_gl.hglrc));
     assert(wglSwapIntervalEXT(1));
 
+    glGenFramebuffers(1, &g_gl.fbo);
+    assert(!glGetError());
+
     print("using %s on %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
 }
 
@@ -738,7 +754,8 @@ void load_core(cstr path)
 
     g_core.api.retro_get_system_info(&g_core.info);
 
-    snprintf(g_paths.settings_file, sizeof(g_paths.settings_file), "%s\\%s.ini", g_paths.settings, g_core.info.library_name);
+    snprintf(g_paths.settings_file, sizeof(g_paths.settings_file), "%s\\" CORE_SETTINGS_FILENAME_FORMAT, g_paths.settings, g_core.info.library_name);
+    snprintf(g_paths.input_settings_file, sizeof(g_paths.input_settings_file), "%s\\" CORE_INPUTS_FILENAME_FORMAT, g_paths.settings, g_core.info.library_name);
     load_core_variables();
 
     g_core.api.retro_set_environment(core_environment_callback);
@@ -878,6 +895,7 @@ void unload_core(void)
     }
 
     g_paths.settings_file[0] = '\0';
+    g_paths.input_settings_file[0] = '\0';
     HeapFree(GetProcessHeap(), 0, g_core.vars.array);
     FreeLibrary(g_core.module);
     RtlZeroMemory(&g_core, sizeof(g_core));
@@ -896,6 +914,59 @@ void load_game(cstr path)
 
     ModifyMenuA(g_ui.hmenu, MENU_LOAD_STATE_ID, MF_ENABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
     ModifyMenuA(g_ui.hmenu, MENU_SAVE_STATE_ID, MF_ENABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
+}
+
+void load_game_state(cstr path)
+{
+    assertp(g_core.module, "attempted to load game state when core was unloaded");
+    
+    c8 *contents = 0;
+
+    ptr file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", path, GetLastError());
+
+    u32 size = GetFileSize(file, 0);
+    u64 expected_size = g_core.api.retro_serialize_size();
+    checkp_goto(size != INVALID_FILE_SIZE, Failure, "GetFileSize() failed (%d)", GetLastError());
+    checkp_goto(size == expected_size, Failure, "wrong save state size (%u, %u expected)", size, expected_size);
+
+    contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
+    u32 bytes_read = 0;
+    u32 ok = ReadFile(file, contents, size, &bytes_read, 0);
+    checkp_goto(ok && bytes_read == size, Failure, "ReadFile(\"%s\") failed (%d, %u/%u B)", path, GetLastError(), bytes_read, size);
+    checkp_goto(g_core.api.retro_unserialize(contents, size), Failure, "retro_unserialize() failed");
+
+    print("loaded game state from \"%s\"", path);
+
+    Failure:
+    CloseHandle(file);
+    HeapFree(GetProcessHeap(), 0, contents);
+    return;
+}
+
+void save_game_state(cstr path)
+{
+    assertp(g_core.module, "attempted to save game state when core was unloaded");
+
+    c8 *contents = 0;
+
+    ptr file = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", path, GetLastError());
+
+    u32 size = (u32)g_core.api.retro_serialize_size();;
+    contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
+    checkp_goto(g_core.api.retro_serialize(contents, size), Failure, "retro_serialize() failed");
+
+    u32 bytes_written = 0;
+    u32 ok = WriteFile(file, contents, size, &bytes_written, 0);
+    checkp_goto(ok && bytes_written == size, Failure, "WriteFile(\"%s\") failed (%d, %u/%u B)", path, GetLastError(), bytes_written, size);
+
+    print("saved game state to \"%s\"", path);
+
+    Failure:
+    CloseHandle(file);
+    HeapFree(GetProcessHeap(), 0, contents);
+    return;
 }
 
 void unload_game(void)
@@ -939,6 +1010,8 @@ i64 window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
         RECT r = {
             0, 0, wr.right, wr.bottom,
         };
+        g_gl.width = wr.right;
+        g_gl.height = wr.bottom;
         assert(SetWindowPos(g_ui.draw_hwnd, 0, r.left, r.top, r.right, r.bottom, 0));
         break;
 
@@ -961,12 +1034,12 @@ i64 window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
 
         case MENU_LOAD_STATE_ID:
             if (open_file_dialog(false, MENU_LOAD_STATE_STR, 0, "Game State (*.bin)\0*.BIN\0All Files (*.*)\0*.*\0", path, sizeof(path)))
-                print("load state from \"%s\"", path);
+                load_game_state(path);
             break;
 
         case MENU_SAVE_STATE_ID:
             if (open_file_dialog(true, MENU_SAVE_STATE_STR, "save.bin", "Game State (*.bin)\0*.BIN\0All Files (*.*)\0*.*\0", path, sizeof(path)))
-                print("save state to \"%s\"", path);
+                save_game_state(path);
             break;
 
         case MENU_OPEN_WEBSITE_ID:
