@@ -11,7 +11,8 @@
 #define CREATE_ALWAYS                    2
 #define OPEN_EXISTING                    3
 #define OPEN_ALWAYS                      4
-#define FILE_ATTRIBUTE_NORMAL            0x80
+#define FILE_ATTRIBUTE_NORMAL            0x00000080
+#define FILE_ATTRIBUTE_DIRECTORY         0x00000010
 #define INVALID_FILE_SIZE                0xFFFFFFFFu
 #define ERROR_FILE_NOT_FOUND             2
 #define HEAP_GENERATE_EXCEPTIONS         0x00000004
@@ -409,6 +410,8 @@ u32  WINAPI GetOpenFileNameA(OPENFILENAMEA *ofn);
 u32  WINAPI GetSaveFileNameA(OPENFILENAMEA *ofn);
 ptr  ShellExecuteA(ptr hwnd, cstr op, cstr file, cstr params, cstr dir, i32 show);
 u32  GetModuleFileNameA(ptr module, c8 *path, u32 pathmax);
+u32  GetFileAttributesA(cstr path);
+u32  CreateDirectoryA(cstr path, ptr security);
 
 
 /* function declarations */
@@ -661,8 +664,15 @@ void load_core(cstr path)
     checkp_goto(api == 1, Failure, "core uses unsupported API version %d", api);
 
     g_core.api.retro_get_system_info(&g_core.info);
+
     snprintf(g_core.paths.save, sizeof(g_core.paths.save), "%s\\save", g_root);
     snprintf(g_core.paths.bios, sizeof(g_core.paths.bios), "%s\\bios", g_root);
+    if (!(GetFileAttributesA(g_core.paths.save) & FILE_ATTRIBUTE_DIRECTORY)) assertp(CreateDirectoryA(g_core.paths.save, 0), "couldn't create save directory \"%s\" (%d)", g_core.paths.save, GetLastError());
+    if (!(GetFileAttributesA(g_core.paths.bios) & FILE_ATTRIBUTE_DIRECTORY)) assertp(CreateDirectoryA(g_core.paths.bios, 0), "couldn't create bios directory \"%s\" (%d)", g_core.paths.bios, GetLastError());
+
+    snprintf(g_core.paths.settings, sizeof(g_core.paths.settings), "%s\\settings", g_root);
+    if (!(GetFileAttributesA(g_core.paths.settings) & FILE_ATTRIBUTE_DIRECTORY)) assertp(CreateDirectoryA(g_core.paths.settings, 0), "couldn't create settings directory \"%s\" (%d)", g_core.paths.settings, GetLastError());
+
     snprintf(g_core.paths.settings, sizeof(g_core.paths.settings), "%s\\settings\\%s.ini", g_root, g_core.info.library_name);
     load_core_variables();
 
