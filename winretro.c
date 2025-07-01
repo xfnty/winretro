@@ -65,13 +65,24 @@
 #define WGL_CONTEXT_FLAGS_ARB            0x2094
 #define WGL_CONTEXT_DEBUG_BIT_ARB        0x00000001
 
-#define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY    9
-#define RETRO_ENVIRONMENT_GET_VARIABLE            15
-#define RETRO_ENVIRONMENT_SET_VARIABLES           16
-#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE       27
-#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY      31
-#define RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER 56
-#define RETRO_ENVIRONMENT_EXPERIMENTAL            0x10000
+#define RETRO_HW_FRAME_BUFFER_VALID                                ((ptr)-1)
+#define RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY                     9
+#define RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE               13
+#define RETRO_ENVIRONMENT_SET_HW_RENDER                            14
+#define RETRO_ENVIRONMENT_GET_VARIABLE                             15
+#define RETRO_ENVIRONMENT_SET_VARIABLES                            16
+#define RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE                     23
+#define RETRO_ENVIRONMENT_GET_LOG_INTERFACE                        27
+#define RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY                       31
+#define RETRO_ENVIRONMENT_SET_CONTROLLER_INFO                      35
+#define RETRO_ENVIRONMENT_GET_VFS_INTERFACE                        (45 | RETRO_ENVIRONMENT_EXPERIMENTAL)
+#define RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION                 52
+#define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY                 55
+#define RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER                  56
+#define RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION       57
+#define RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION            59
+#define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK 69
+#define RETRO_ENVIRONMENT_EXPERIMENTAL                             0x10000
 
 #define MENU_OPEN_CORE_STR    "Open Core"
 #define MENU_OPEN_ROM_STR     "Open ROM"
@@ -387,6 +398,26 @@ enum retro_hw_context_type {
    RETRO_HW_CONTEXT_OPENGLES_VERSION = 5,
 };
 
+typedef void (*retro_hw_context_reset_t)(void);
+typedef u64  (*retro_hw_get_current_framebuffer_t)(void);
+typedef ptr  (*retro_hw_get_proc_address_t)(cstr sym);
+
+typedef struct retro_hw_render_callback retro_hw_render_callback;
+struct retro_hw_render_callback {
+   retro_hw_context_type context_type;
+   retro_hw_context_reset_t context_reset;
+   retro_hw_get_current_framebuffer_t get_current_framebuffer;
+   retro_hw_get_proc_address_t get_proc_address;
+   u8 depth;
+   u8 stencil;
+   u8 bottom_left_origin;
+   u32 version_major;
+   u32 version_minor;
+   u8 cache_context;
+   retro_hw_context_reset_t context_destroy;
+   u8 debug_context;
+};
+
 typedef enum os_import_lib os_import_lib;
 enum os_import_lib {
     #define _X(_id, _file) _id,
@@ -447,7 +478,7 @@ void load_os_api(void);
 void init_paths(void);
 void init_logging(void);
 void init_ui(void);
-void init_gl(void);
+u8   init_gl(void);
 void free_gl(void);
 void free_ui(void);
 void load_core(cstr path);
@@ -460,6 +491,7 @@ void save_game_state(cstr path);
 void unload_game(void);
 void process_ui_events(void);
 void present_frame(void);
+ptr  core_get_proc_addr_callback(cstr symbol);
 i64  WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp);
 void core_log_callback(u32 level, cstr format, ...);
 u8   core_environment_callback(u32 cmd, ptr data);
@@ -501,6 +533,7 @@ struct {
     u32 rbo;
     u32 width;
     u32 height;
+    retro_hw_render_callback hw;
 } g_gl;
 
 struct {
@@ -661,10 +694,13 @@ void init_ui(void)
     ShowWindow(g_ui.hwnd, SW_SHOW);
 }
 
-void init_gl(void)
+u8 init_gl(void)
 {
+    if (g_gl.hdc) ReleaseDC(g_ui.draw_hwnd, g_gl.hdc);
+    if (g_gl.hglrc) wglDeleteContext(g_gl.hglrc);
+
     g_gl.hdc = GetDC(g_ui.draw_hwnd);
-    assert(g_gl.hdc);
+    checkp_goto(g_gl.hdc, Failure, "GetDC() failed (%d)", GetLastError());
     PIXELFORMATDESCRIPTOR pfd = {0};
     pfd.nSize = sizeof(pfd);
     pfd.nVersion = 1;
@@ -672,36 +708,36 @@ void init_gl(void)
     pfd.iPixelType = PFD_TYPE_RGBA;
     pfd.iLayerType = PFD_MAIN_PLANE;
     int pixel_format = ChoosePixelFormat(g_gl.hdc, &pfd);
-    assert(DescribePixelFormat(g_gl.hdc, pixel_format, sizeof(pfd), &pfd));
-    assert(SetPixelFormat(g_gl.hdc, pixel_format, &pfd));
+    checkp_goto(DescribePixelFormat(g_gl.hdc, pixel_format, sizeof(pfd), &pfd), Failure, "DescribePixelFormat() failed (%d)", GetLastError());
+    checkp_goto(SetPixelFormat(g_gl.hdc, pixel_format, &pfd), Failure, "SetPixelFormat() failed (%d)", GetLastError());
     ptr tmp_gl = wglCreateContext(g_gl.hdc);
-    assert(tmp_gl);
-    assert(wglMakeCurrent(g_gl.hdc, tmp_gl));
+    checkp_goto(tmp_gl, Failure, "wglCreateContext() failed (%d)", GetLastError());
+    checkp_goto(wglMakeCurrent(g_gl.hdc, tmp_gl), Failure, "wglMakeCurrent() failed (%d)", GetLastError());
 
-    ptr opengl32 = LoadLibraryA("opengl32.dll");
-    assert(opengl32);
-
-    #define _X(_ret, _name, _arg1, ...) assert(_name = wglGetProcAddress(#_name));
+    #define _X(_ret, _name, _arg1, ...) checkp_goto(_name = wglGetProcAddress(#_name), Failure, "wglGetProcAddress(\"%s\") failed (%d)", #_name, GetLastError());
     OPENGL_EXT_API_DECL_LIST
     #undef _X
 
-    assert(wglMakeCurrent(0, 0));
-    assert(wglDeleteContext(tmp_gl));
+    checkp_goto(wglMakeCurrent(0, 0), Failure, "wglMakeCurrent() failed (%d)", GetLastError());
+    checkp_goto(wglDeleteContext(tmp_gl), Failure, "wglDeleteContext() failed (%d)", GetLastError());
     g_gl.hglrc = wglCreateContextAttribsARB(g_gl.hdc, 0, (i32[]){
-        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
+        WGL_CONTEXT_MAJOR_VERSION_ARB, g_gl.hw.version_major,
+        WGL_CONTEXT_MINOR_VERSION_ARB, g_gl.hw.version_minor,
         WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-        WGL_CONTEXT_FLAGS_ARB, WGL_CONTEXT_DEBUG_BIT_ARB,
+        (g_gl.hw.debug_context) ? (WGL_CONTEXT_FLAGS_ARB) : (0), WGL_CONTEXT_DEBUG_BIT_ARB,
         0
     });
-    assert(g_gl.hglrc);
-    assert(wglMakeCurrent(g_gl.hdc, g_gl.hglrc));
-    assert(wglSwapIntervalEXT(1));
-
-    glGenFramebuffers(1, &g_gl.fbo);
-    assert(!glGetError());
+    checkp_goto(g_gl.hglrc, Failure, "wglCreateContextAttribsARB() failed (%d)", glGetError());
+    checkp_goto(wglMakeCurrent(g_gl.hdc, g_gl.hglrc), Failure, "wglMakeCurrent() failed (%d)", GetLastError());
+    checkp_goto(wglSwapIntervalEXT(1), Failure, "wglSwapIntervalEXT() failed (%d)", GetLastError());
 
     print("using %s on %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
+    return true;
+
+    Failure:
+    free_gl();
+    print("init_gl() failed");
+    return false;
 }
 
 void free_gl(void)
@@ -910,8 +946,6 @@ void load_game(cstr path)
     retro_game_info info = { .path = path };
     checkp_return(g_core.api.retro_load_game(&info), "failed to load game \"%s\"", path);
 
-    init_gl();
-
     ModifyMenuA(g_ui.hmenu, MENU_LOAD_STATE_ID, MF_ENABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
     ModifyMenuA(g_ui.hmenu, MENU_SAVE_STATE_ID, MF_ENABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
 }
@@ -1067,8 +1101,6 @@ void core_log_callback(u32 level, cstr format, ...)
 
 u8 core_environment_callback(u32 cmd, ptr data)
 {
-    cmd &= ~RETRO_ENVIRONMENT_EXPERIMENTAL;
-    
     switch (cmd)
     {
     case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
@@ -1083,9 +1115,19 @@ u8 core_environment_callback(u32 cmd, ptr data)
         *(cstr*)data = g_paths.save;
         return true;
 
+
     case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER:
         *(u32*)data = RETRO_HW_CONTEXT_OPENGL_CORE;
         return true;
+
+    case RETRO_ENVIRONMENT_SET_HW_RENDER:
+        g_gl.hw = *(retro_hw_render_callback*)data;
+
+        if (g_gl.hw.context_type != RETRO_HW_CONTEXT_OPENGL_CORE)
+            return false;
+
+        g_gl.hw.
+        return init_gl();
 
     case RETRO_ENVIRONMENT_SET_VARIABLES:
         for (retro_variable *v = data; v->key; v++)
@@ -1106,6 +1148,17 @@ u8 core_environment_callback(u32 cmd, ptr data)
     case RETRO_ENVIRONMENT_GET_VARIABLE:
         retro_variable *v = data;
         return (v->value = get_core_variable(v->key)) != 0;
+
+    case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE:
+    case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION:
+    case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION:
+    case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE:
+    case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
+    case RETRO_ENVIRONMENT_GET_VFS_INTERFACE:
+    case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY:
+    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK:
+        return false;
     }
 
     print("unhandled core command %u (%p)", cmd, data);
@@ -1187,6 +1240,14 @@ void present_frame(void)
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     SwapBuffers(g_gl.hdc);
+}
+
+ptr core_get_proc_addr_callback(cstr symbol)
+{
+    ptr f = wglGetProcAddress(symbol);
+    if (!f) f = GetProcAddress(LoadLibraryA("opengl32.dll", symbol));
+    if (!f) print("failed to load \"%s\"", symbol);
+    return f;
 }
 
 u8 open_file_dialog(u8 save, cstr title, cstr filename, cstr extensions, c8 *path, u32 pathmax)
