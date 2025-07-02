@@ -1,14 +1,6 @@
 # Files
-*.exe
-*.ilk
-*.pdb
-*.obj
-*.rdi
-*.ini
 *.ignore
 
 # Folders
-save/
-bios/
-settings/
+out/
 *.ignore/
