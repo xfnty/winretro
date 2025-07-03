@@ -176,7 +176,8 @@ i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
     switch (msg)
     {
     case WM_CLOSE:
-        enqueue_event((ui_event_t){ .type = UI_EXIT });
+        e.type = UI_EXIT;
+        enqueue_event(e);
         break;
 
     case WM_SIZE:
@@ -199,11 +200,11 @@ i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
             break;
 
         case MENU_OPEN_CORE_ID:
-            if (open_file_dialog(false, MENU_OPEN_CORE_STR, 0, "Libretro Core (*.dll)\0*.DLL\0", e.value.path, sizeof(e.value.path)))
-            {
-                e.type = UI_OPEN_CORE;
-                enqueue_event(e);
-            }
+                if (open_file_dialog(false, MENU_OPEN_CORE_STR, 0, "Libretro Core (*.dll)\0*.DLL\0", e.value.path, sizeof(e.value.path)))
+                {
+                    e.type = UI_OPEN_CORE;
+                    enqueue_event(e);
+                }
             break;
 
         case MENU_OPEN_ROM_ID:

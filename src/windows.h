@@ -256,6 +256,7 @@ ptr GetModuleHandleA(cstr name);
 ptr LoadLibraryA(cstr name);
 ptr GetProcAddress(ptr module, cstr symbol);
 u32 FreeLibrary(ptr module);
+void RtlCopyMemory(ptr dst, const ptr src, u64 size);
 void RtlFillMemory(ptr buffer, u64 size, i32 byte);
 void RtlZeroMemory(ptr buffer, u64 size);
 ptr CreateFileA(cstr path, u32 access, u32 share, ptr security, u32 create, u32 flags, ptr template);
