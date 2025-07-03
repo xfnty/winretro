@@ -1,17 +1,30 @@
 #pragma once
 
+#include "state.h"
 #include "common.h"
 
-typedef struct g_ui_t g_ui_t;
-struct g_ui_t {
-    ptr instance;
-    ptr window;
-    ptr menu;
-    ptr render_window;
-    u8 was_exit_requested;
+typedef enum ui_event_type_t ui_event_type_t;
+enum ui_event_type_t {
+    UI_EXIT,
+    UI_OPEN_CORE,
+    UI_OPEN_ROM,
+    UI_LOAD_STATE,
+    UI_SAVE_STATE,
 };
-extern g_ui_t g_ui;
+
+typedef struct ui_event_t ui_event_t;
+struct ui_event_t {
+    ui_event_type_t type;
+    union {
+        c8 path[256];
+    } value;
+};
 
 void init_ui(void);
-void process_ui_events(void);
 void free_ui(void);
+
+void set_ui_state(state_t state);
+void set_ui_status(cstr text);
+
+void poll_ui_events(void);
+u8 get_ui_event(ui_event_t *event);

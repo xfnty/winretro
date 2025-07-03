@@ -1,44 +1,25 @@
 #include "common.h"
 
-g_log_t g_log;
-g_mem_t g_mem;
+#include "assert.h"
+#include "windows.h"
 
 u32 str_equals(cstr a, cstr b, u32 minsize)
 {
+    assert(a && b);
     for (u32 i = 0; i < minsize && a[i] == b[i]; i++)
         if (!a[i]) return true;
     return false;
 }
 
-void print(cstr format, ...)
-{
-    if (!g_log.initialized)
-    {
-        AttachConsole(ATTACH_PARENT_PROCESS);
-        g_log.stdout = GetStdHandle(STD_OUTPUT_HANDLE);
-        g_log.enabled = g_log.stdout != INVALID_HANDLE_VALUE || IsDebuggerPresent();
-        g_log.initialized = true;
-    }
-
-    if (!g_log.enabled)
-        return;
-
-    c8 buffer[1024];
-
-    u32 len = vsnprintf(buffer, sizeof(buffer) - 2, format, va_create(format));
-    buffer[len++] = '\n';
-    WriteConsoleA(g_log.stdout, buffer, len, 0, 0);
-    buffer[len++] = '\0';
-    OutputDebugStringA(buffer);
-}
-
 u32 snprintf(c8 *buffer, u32 maxsize, cstr format, ...)
 {
+    assert(buffer && format);
     return vsnprintf(buffer, maxsize, format, va_create(format));
 }
 
 u32 vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args)
 {
+    assert(buffer && format && args);
     if (!maxsize) return 0;
 
     u32 fi = 0, bi = 0;
@@ -88,6 +69,7 @@ u32 vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args)
             case 's':
                 str = va_arg(args, cstr);
                 str = (str) ? (str) : ("(null)");
+                str = (str && str[0]) ? (str) : ("(empty)");
                 while (bi < maxsize - 1 && *str) buffer[bi++] = *(str++);
                 fi++;
                 break;
@@ -142,48 +124,17 @@ u32 vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args)
     return bi;
 }
 
-ptr mem_alloc(u32 size)
+cstr get_root_directory(void)
 {
-    if (!size) return 0;
-    
-    if (!g_mem.data)
-    {
-        SYSTEM_INFO info;
-        GetSystemInfo(&info);
+    static c8 path[256] = {'\0'};
 
-        g_mem.reserved = GB(1);
-        if ((g_mem.reserved / info.dwPageSize) * info.dwPageSize < g_mem.reserved)
-            g_mem.reserved += info.dwPageSize;
-        
-        g_mem.data = VirtualAlloc(0, g_mem.reserved, MEM_RESERVE, PAGE_READWRITE);
-        assert(g_mem.data);
+    if (!path[0])
+    {
+        u32 l = GetModuleFileNameA(0, path, sizeof(path) - 1);
+        assert(l > 0);
+        while (path[l] != '\\') l--;
+        path[l] = '\0';
     }
 
-    assert(g_mem.used + size <= g_mem.reserved);
-
-    ptr p = VirtualAlloc(g_mem.data + g_mem.used, size, MEM_COMMIT, PAGE_READWRITE);
-    assert(p);
-    RtlFillMemory(p, size, 0xCC);
-
-    g_mem.used += size;
-    return p;
-}
-
-void mem_reset(ptr p)
-{
-    if (!p)
-    {
-        VirtualFree(g_mem.data, 0, MEM_RELEASE);
-        RtlZeroMemory(&g_mem, sizeof(g_mem));
-        return;
-    }
-
-    assert(g_mem.data);
-    assert((u64)p >= (u64)g_mem.data);
-
-    u64 p_start_offset = (u64)p - (u64)g_mem.data;
-    assert(p_start_offset < g_mem.used);
-
-    RtlFillMemory(p, g_mem.used - p_start_offset, 0xCC);
-    g_mem.used = p_start_offset;
+    return path;
 }

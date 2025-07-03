@@ -39,7 +39,8 @@ where /q cl.exe || (
     goto CompileFailed
 )
 
-set cflags=/nologo /options:strict /std:c11 /Wall /wd4711 /wd4820 /wd5045 /wd4152 /Oi- /GS- /fp:fast /I %src%.
+set cflags=/nologo /options:strict /std:c11 /Oi- /GS- /fp:fast /I %src%. ^
+/Wall /wd4711 /wd4820 /wd5045 /wd4152 /wd4774 /wd4061
 set lflags=/nodefaultlib /entry:_start /subsystem:windows
 if "%dist%"=="1" (
     set cflags=!cflags! /O2
