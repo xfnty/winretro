@@ -1,6 +1,5 @@
 #pragma once
 
-#include "state.h"
 #include "common.h"
 
 void init_core(cstr dll);

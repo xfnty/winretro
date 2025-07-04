@@ -21,6 +21,7 @@
 
 static struct {
     state_t state;
+    state_t core_state;
     ptr instance;
     ptr window;
     ptr statusbar;
@@ -39,6 +40,8 @@ static void enqueue_event(ui_event_t event);
 
 void init_ui(void)
 {
+    free_ui();
+
     g_ui.instance = GetModuleHandleA(0);
 
     ptr file_menu = CreateMenu();
@@ -119,13 +122,16 @@ void init_ui(void)
     );
     assert(g_ui.statusbar);
     SendMessageA(g_ui.statusbar, SB_SETPARTS, 1, (i64)(i32[]){ -1 });
-    set_ui_status("");
-
     ShowWindow(g_ui.window, SW_SHOW);
+    g_ui.state = STATE_INITIALIZED;
+    
+    set_ui_status("");
 }
 
 void free_ui(void)
 {
+    if (g_ui.state == STATE_UNINITIALIZED) return;
+
     DestroyWindow(g_ui.render_window);
     DestroyWindow(g_ui.window);
     UnregisterClassA(RENDER_WINDOW_CLASS_NAME, g_ui.instance);
@@ -133,11 +139,13 @@ void free_ui(void)
     RtlZeroMemory(&g_ui, sizeof(g_ui));
 }
 
-void set_ui_state(state_t state)
+void ui_display_core_state(state_t state)
 {
-    if (g_ui.state == state) return;
+    assert(g_ui.state == STATE_INITIALIZED);
+
+    if (g_ui.core_state == state) return;
     
-    g_ui.state = state;
+    g_ui.core_state = state;
     ModifyMenuA(g_ui.menu, MENU_OPEN_ROM_ID,   (state >= STATE_INITIALIZED) ? (MF_ENABLED) : (MF_DISABLED), MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
     ModifyMenuA(g_ui.menu, MENU_LOAD_STATE_ID, (state == STATE_ACTIVE)      ? (MF_ENABLED) : (MF_DISABLED), MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
     ModifyMenuA(g_ui.menu, MENU_SAVE_STATE_ID, (state == STATE_ACTIVE)      ? (MF_ENABLED) : (MF_DISABLED), MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
@@ -145,11 +153,13 @@ void set_ui_state(state_t state)
 
 void set_ui_status(cstr text)
 {
+    assert(g_ui.state == STATE_INITIALIZED);
     SendMessageA(g_ui.statusbar, SB_SETTEXTA, 0 | SBT_NOBORDERS, (i64)text);
 }
 
 void poll_ui_events(void)
 {
+    assert(g_ui.state == STATE_INITIALIZED);
     for (MSG msg; PeekMessageA(&msg, g_ui.window, 0, 0, PM_REMOVE) != 0;)
     {
         TranslateMessage(&msg);
@@ -159,11 +169,18 @@ void poll_ui_events(void)
 
 u8 get_ui_event(ui_event_t *event)
 {
+    assert(g_ui.state == STATE_INITIALIZED);
     assert(event);
     if (!g_ui.events.count) return false;
     *event = g_ui.events.array[(g_ui.events.head++) % countof(g_ui.events.array)];
     g_ui.events.count--;
     return true;
+}
+
+ptr get_ui_render_window(void)
+{
+    assert(g_ui.state == STATE_INITIALIZED);
+    return g_ui.render_window;
 }
 
 i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
@@ -262,6 +279,7 @@ u8 open_file_dialog(u8 save, cstr title, cstr filename, cstr extensions, c8 *pat
 
 void enqueue_event(ui_event_t event)
 {
+    assert(g_ui.state == STATE_INITIALIZED);
     assert(g_ui.events.count + 1 <= countof(g_ui.events.array));
     g_ui.events.array[(g_ui.events.head + (g_ui.events.count++)) % countof(g_ui.events.array)]
         = event;

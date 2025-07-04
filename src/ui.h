@@ -1,6 +1,5 @@
 #pragma once
 
-#include "state.h"
 #include "common.h"
 
 typedef enum ui_event_type_t ui_event_type_t;
@@ -23,8 +22,10 @@ struct ui_event_t {
 void init_ui(void);
 void free_ui(void);
 
-void set_ui_state(state_t state);
+void ui_display_core_state(state_t state);
 void set_ui_status(cstr text);
 
 void poll_ui_events(void);
+
 u8 get_ui_event(ui_event_t *event);
+ptr get_ui_render_window(void);

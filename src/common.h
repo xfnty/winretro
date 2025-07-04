@@ -22,6 +22,13 @@ typedef const char         *cstr;
 typedef void               *ptr;
 typedef unsigned char      *va_list;
 
+typedef enum state_t state_t;
+enum state_t {
+    STATE_UNINITIALIZED = 0,
+    STATE_INITIALIZED,
+    STATE_ACTIVE,
+};
+
 
 /* macros */
 #define KB(_b) ((_b) * 1024)

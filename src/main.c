@@ -1,7 +1,7 @@
 #include "ui.h"
 #include "log.h"
 #include "core.h"
-#include "state.h"
+#include "common.h"
 #include "windows.h"
 
 void _start(void)
@@ -29,7 +29,7 @@ void _start(void)
             }
         }
 
-        set_ui_state(get_core_state());
+        ui_display_core_state(get_core_state());
     }
     
     free_core();
