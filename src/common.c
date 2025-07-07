@@ -11,6 +11,14 @@ u32 str_equals(cstr a, cstr b, u32 minsize)
     return false;
 }
 
+u32 str_length(cstr a)
+{
+    assert(a);
+    u32 l = 0;
+    while (*(a++)) l++;
+    return l;
+}
+
 u32 snprintf(c8 *buffer, u32 maxsize, cstr format, ...)
 {
     assert(buffer && format);
@@ -137,4 +145,12 @@ cstr get_root_directory(void)
     }
 
     return path;
+}
+
+f64 get_time(void)
+{
+    i64 f, c;
+    assert(QueryPerformanceFrequency(&f));
+    assert(QueryPerformanceCounter(&c));
+    return (f64)c / f;
 }

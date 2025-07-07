@@ -72,17 +72,6 @@
 #define SBT_NOBORDERS                      0x0100
 #define SBT_POPOUT                         0x0200
 
-#define GL_VENDOR                          0x1F00
-#define GL_RENDERER                        0x1F01
-#define GL_VERSION                         0x1F02
-#define GL_COLOR_BUFFER_BIT                0x00004000
-#define WGL_CONTEXT_MAJOR_VERSION_ARB      0x2091
-#define WGL_CONTEXT_MINOR_VERSION_ARB      0x2092
-#define WGL_CONTEXT_PROFILE_MASK_ARB       0x9126
-#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB   0x00000001
-#define WGL_CONTEXT_FLAGS_ARB              0x2094
-#define WGL_CONTEXT_DEBUG_BIT_ARB          0x00000001
-
 #if defined(_MSC_VER)
     #define WINAPI __stdcall
 #else
@@ -158,12 +147,6 @@ struct PIXELFORMATDESCRIPTOR {
     u32 dwVisibleMask;
     u32 dwDamageMask;
 };
-typedef ptr (WINAPI *PFNWGLCREATECONTEXTATTRIBSARBPROC)(
-    ptr hDC,
-    ptr hShareContext,
-    i32 *attribList
-);
-typedef u32 (WINAPI *PFNWGLSWAPINTERVALEXTPROC)(i32 interval);
 typedef struct OPENFILENAMEA OPENFILENAMEA;
 struct OPENFILENAMEA {
     u32  lStructSize;
@@ -234,6 +217,11 @@ struct INITCOMMONCONTROLSEX {
   u32 dwSize;
   u32 dwICC;
 };
+typedef struct SIZE SIZE;
+struct SIZE {
+    i32 cx;
+    i32 cy;
+};
 
 
 /* function declarations */
@@ -277,6 +265,9 @@ u32 GetCurrentDirectory(u32 nBufferLength, cstr lpBuffer);
 u32 SetCurrentDirectory(cstr path);
 void GetSystemTime(SYSTEMTIME *time);
 u32 FlushFileBuffers(ptr file);
+u32 QueryPerformanceFrequency(i64 *freq);
+u32 QueryPerformanceCounter(i64 *counter);
+u16 WINAPI CaptureStackBackTrace(u32 skip, u32 capture, ptr *bt, u32 *hash);
 
 /* user32.dll */
 ptr CreateMenu(void);
@@ -305,21 +296,7 @@ i32 ChoosePixelFormat(ptr hdc, PIXELFORMATDESCRIPTOR *pfd);
 i32 DescribePixelFormat(ptr hdc, i32 pixel_format, u32 pfd_size, PIXELFORMATDESCRIPTOR *pfd);
 u32 SetPixelFormat(ptr hdc, i32 pixel_format, PIXELFORMATDESCRIPTOR *pfd);
 ptr GetStockObject(i32 id);
-u32 SwapBuffers(ptr hdc);
-
-/* opengl32.dll */
-ptr WINAPI wglCreateContext(ptr hdc);
-u32 WINAPI wglDeleteContext(ptr hglrc);
-ptr WINAPI wglGetProcAddress(cstr symbol);
-u32 WINAPI wglMakeCurrent(ptr hdc, ptr hglrc);
-u32 WINAPI glGetError(void);
-void WINAPI glClear(u32 mask);
-cstr WINAPI glGetString(u32 id);
-cstr WINAPI glClearColor(f32 r, f32 g, f32 b, f32 a);
-void WINAPI glGenTextures(u32 n, u32 *textures);
-void WINAPI glBindTexture(u32 n, u32 tex);
-void WINAPI glTexParameteri(u32 target, u32 pname, i32 param);
-void WINAPI glTexImage2D(u32 target, i32 level, u32 ifmt, i64 w, i64 h, i32 b, u32 fmt, u32 type, const ptr px);
+u32 GetTextExtentPoint32A(ptr hdc, cstr text, i32 len, SIZE *size);
 
 /* comdlg32.dll */
 u32 WINAPI GetOpenFileNameA(OPENFILENAMEA *ofn);

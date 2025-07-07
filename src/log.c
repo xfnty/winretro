@@ -30,12 +30,12 @@ void init_log(void)
     snprintf(
         g_log.filepath + l,
         sizeof(g_log.filepath) - l,
-        "\\%hu-%hu-%hu-%hu-%hu-%hu.%hu.txt",
+        "\\%hu-%hu-%hu_%hu-%hu-%hu.%hu.txt",
         time.wYear, time.wMonth, time.wDay,
         time.wHour, time.wMinute, time.wSecond, time.wMilliseconds
     );
     
-    g_log.file = CreateFileA(g_log.filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    g_log.file = CreateFileA(g_log.filepath, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 
     AttachConsole(ATTACH_PARENT_PROCESS);
     g_log.stdout = GetStdHandle(STD_OUTPUT_HANDLE);

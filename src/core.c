@@ -1,5 +1,6 @@
 #include "core.h"
 
+#include "gl.h"
 #include "log.h"
 #include "assert.h"
 #include "windows.h"
@@ -28,6 +29,7 @@
 #define RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION            59
 #define RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK 69
 #define RETRO_ENVIRONMENT_EXPERIMENTAL                             0x10000
+#define RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER        (40 | RETRO_ENVIRONMENT_EXPERIMENTAL)
 
 typedef struct retro_system_info retro_system_info;
 struct retro_system_info {
@@ -90,10 +92,7 @@ typedef enum retro_hw_context_type retro_hw_context_type;
 enum retro_hw_context_type {
    RETRO_HW_CONTEXT_NONE             = 0,
    RETRO_HW_CONTEXT_OPENGL           = 1,
-   RETRO_HW_CONTEXT_OPENGLES2        = 2,
    RETRO_HW_CONTEXT_OPENGL_CORE      = 3,
-   RETRO_HW_CONTEXT_OPENGLES3        = 4,
-   RETRO_HW_CONTEXT_OPENGLES_VERSION = 5,
 };
 
 typedef enum retro_pixel_format retro_pixel_format;
@@ -162,12 +161,26 @@ static struct {
         #undef _X
     } api;
     struct {
+        u32 count;
+        u32 allocated;
+        struct {
+            c8 key[64];
+            c8 value[32];
+        } *array;
+    } vars;
+    struct {
         c8 save[256];
         c8 system[256];
         c8 settings[256];
+        c8 settings_file[256];
     } paths;
 } g_core;
 
+static void load_core_variables(void);
+static void save_core_variables(void);
+static cstr get_core_variable(cstr key);
+static void update_core_variable(cstr key, cstr value);
+static u32  get_core_variable_idx(cstr key);
 static void core_log_callback(u32 level, cstr format, ...);
 static u8   core_environment_callback(u32 cmd, ptr data);
 static void core_video_callback(ptr data, u32 width, u32 height, u64 pitch);
@@ -214,6 +227,9 @@ void init_core(cstr dll)
 
     g_core.api.retro_get_system_info(&g_core.info);
 
+    snprintf(g_core.paths.settings_file, sizeof(g_core.paths.settings_file), "%s\\" CORE_SETTINGS_FILENAME_FORMAT, g_core.paths.settings, g_core.info.library_name);
+    load_core_variables();
+
     g_core.api.retro_set_environment(core_environment_callback);
     g_core.api.retro_set_video_refresh(core_video_callback);
     g_core.api.retro_set_audio_sample(core_audio_sample_callback);
@@ -223,6 +239,7 @@ void init_core(cstr dll)
     g_core.api.retro_init();
 
     g_core.api.retro_get_system_av_info(&g_core.avinfo);
+    configure_gl(g_core.avinfo.geometry.max_width, g_core.avinfo.geometry.max_height);
 
     g_core.state = STATE_INITIALIZED;
 
@@ -245,6 +262,7 @@ void free_core(void)
     if (g_core.state >= STATE_INITIALIZED)
     {
         unload_game();
+        save_core_variables();
         g_core.api.retro_deinit();
         print("unloaded %s", g_core.info.library_name);
         FreeLibrary(g_core.module);
@@ -273,6 +291,12 @@ void unload_game(void)
     g_core.api.retro_unload_game();
     g_core.state = STATE_INITIALIZED;
     print("unloaded game");
+}
+
+void run_frame(void)
+{
+    assert(g_core.state == STATE_ACTIVE);
+    g_core.api.retro_run();
 }
 
 void load_game_state(cstr path)
@@ -376,6 +400,150 @@ cstr get_core_save_directory(void)
     return g_core.paths.save;
 }
 
+void load_core_variables(void)
+{
+    if (!g_core.vars.array)
+    {
+        g_core.vars.allocated = 8;
+        g_core.vars.array = HeapAlloc(
+            GetProcessHeap(),
+            HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
+            sizeof(g_core.vars.array[0]) * g_core.vars.allocated
+        );
+    }
+
+    c8 *contents = 0;
+
+    ptr file = CreateFileA(
+        g_core.paths.settings_file,
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        0,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        0
+    );
+    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_core.paths.settings_file, GetLastError());
+
+    u32 size = GetFileSize(file, 0);
+    checkp_goto(size != INVALID_FILE_SIZE, Failure, "GetFileSize() failed (%d)", GetLastError());
+
+    contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
+    u32 bytes_read = 0;
+    u32 ok = ReadFile(file, contents, size, &bytes_read, 0);
+    checkp_goto(ok && bytes_read == size, Failure, "ReadFile(\"%s\") failed (%d, %u/%u B)", g_core.paths.settings_file, GetLastError(), bytes_read, size);
+
+    for (u32 i = 0; i < size; )
+    {
+        c8 key[256];
+        c8 value[256];
+
+        while (i < size && (contents[i] == ' ' || contents[i] == '\n')) i++;
+
+        u32 j;
+        for (j = 0; j < countof(key) - 1 && i < size && contents[i] != '='; j++, i++)
+            key[j] = contents[i];
+        key[j] = '\0';
+        i++;
+
+        for (j = 0; j < countof(value) - 1 && i < size && contents[i] != '\n'; j++, i++)
+            value[j] = contents[i];
+        value[j] = '\0';
+        i++;
+
+        if (!key[0]) continue;
+
+        update_core_variable(key, value);
+    }
+
+    print("loaded core settings from \"%s\"", g_core.paths.settings_file);
+
+    Failure:
+    CloseHandle(file);
+    HeapFree(GetProcessHeap(), 0, contents);
+    return;
+}
+
+void save_core_variables(void)
+{
+    c8 *contents = 0;
+
+    ptr file = CreateFileA(
+        g_core.paths.settings_file,
+        GENERIC_WRITE,
+        0,
+        0,
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        0
+    );
+    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_core.paths.settings_file, GetLastError());
+
+    u32 size = sizeof(g_core.vars.array[0]) * g_core.vars.count + 1;
+    contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
+
+    u32 bytes_to_write = 0;
+    for (u32 j = 0; j < g_core.vars.count; j++)
+    {
+        bytes_to_write += snprintf(
+            contents + bytes_to_write,
+            size - bytes_to_write,
+            "%s=%s\n",
+            g_core.vars.array[j].key,
+            g_core.vars.array[j].value
+        );
+        assert(bytes_to_write <= size);
+    }
+
+    u32 bytes_written = 0;
+    u32 ok = WriteFile(file, contents, bytes_to_write, &bytes_written, 0);
+    checkp_goto(ok && bytes_written == bytes_to_write, Failure, "WriteFile(\"%s\") failed (%d, %u/%u B)", g_core.paths.settings_file, GetLastError(), bytes_written, bytes_to_write);
+
+    print("saved core settings to \"%s\"", g_core.paths.settings_file);
+
+    Failure:
+    CloseHandle(file);
+    HeapFree(GetProcessHeap(), 0, contents);
+    return;
+}
+
+u32 get_core_variable_idx(cstr key)
+{
+    for (u32 i = 0; i < g_core.vars.count; i++)
+        if (str_equals(key, g_core.vars.array[i].key, sizeof(g_core.vars.array[i].key)))
+            return i;
+    return INVALID_IDX;
+}
+
+cstr get_core_variable(cstr key)
+{
+    u32 i = get_core_variable_idx(key);
+    return (i != INVALID_IDX) ? (g_core.vars.array[i].value) : (0);
+}
+
+void update_core_variable(cstr key, cstr value)
+{
+    u32 var_idx = get_core_variable_idx(key);
+    if (var_idx == INVALID_IDX) var_idx = g_core.vars.count;
+
+    if (g_core.vars.count == g_core.vars.allocated)
+    {
+        g_core.vars.allocated <<= 1;
+        g_core.vars.array = HeapReAlloc(
+            GetProcessHeap(),
+            HEAP_GENERATE_EXCEPTIONS | HEAP_ZERO_MEMORY,
+            g_core.vars.array,
+            sizeof(g_core.vars.array[0]) * g_core.vars.allocated
+        );
+    }
+
+    snprintf(g_core.vars.array[var_idx].key, sizeof(g_core.vars.array[var_idx].key), "%s", key);
+    snprintf(g_core.vars.array[var_idx].value, sizeof(g_core.vars.array[var_idx].value), "%s", value);
+
+    if (var_idx == g_core.vars.count)
+        g_core.vars.count++;
+}
+
 void core_log_callback(u32 level, cstr format, ...)
 {
     (void)level;
@@ -412,8 +580,38 @@ u8 core_environment_callback(u32 cmd, ptr data)
         return true;
 
     case RETRO_ENVIRONMENT_SET_HW_RENDER:
+        g_core.hw = data;
+        check_return_value(
+            g_core.hw->context_type == RETRO_HW_CONTEXT_OPENGL_CORE
+            && g_core.hw->version_major == 3
+            && g_core.hw->version_minor == 3,
+            false
+        );
+        g_core.hw->get_proc_address = get_gl_proc_address;
+        g_core.hw->get_current_framebuffer = get_gl_framebuffer;
+        g_core.hw->context_reset();
+        return true;
+
     case RETRO_ENVIRONMENT_SET_VARIABLES:
+        for (retro_variable *v = data; v->key; v++)
+        {
+            if (get_core_variable(v->key))
+                continue;
+
+            c8 value[64] = {0};
+            u32 i = 0, j = 0;
+            while (v->value[i] && v->value[i] != ';') i++;
+            i++;
+            while (v->value[i] && v->value[i] == ' ') i++;
+            while (v->value[i] && v->value[i] != '|' && j < sizeof(value) - 1) value[j++] = v->value[i++];
+            update_core_variable(v->key, value);
+        }
+        return true;
+
     case RETRO_ENVIRONMENT_GET_VARIABLE:
+        retro_variable *v = data;
+        return (v->value = get_core_variable(v->key)) != 0;
+
     case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE:
     case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION:
     case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION:
@@ -425,16 +623,18 @@ u8 core_environment_callback(u32 cmd, ptr data)
     case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK:
     case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
     case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
+    case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER:
         return false;
     }
 
-    print("ignored core command %u (%p)", cmd, data);
+    print("ignored core command %u (%u, %p)", cmd, cmd & (~RETRO_ENVIRONMENT_EXPERIMENTAL), data);
     return false;
 }
 
 void core_video_callback(ptr data, u32 width, u32 height, u64 pitch)
 {
     (void)data; (void)width; (void)height; (void)pitch;
+    // print("frame %ux%u %p", width, height, data);
 }
 
 void core_audio_sample_callback(i16 left, i16 right)

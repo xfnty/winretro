@@ -43,6 +43,8 @@ enum state_t {
 
 /* function declarations */
 u32  str_equals(cstr a, cstr b, u32 minsize);
+u32  str_length(cstr a);
 u32  snprintf(c8 *buffer, u32 maxsize, cstr format, ...);
 u32  vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args);
 cstr get_root_directory(void);
+f64  get_time(void);

@@ -28,4 +28,4 @@ void set_ui_status(cstr text);
 void poll_ui_events(void);
 
 u8 get_ui_event(ui_event_t *event);
-ptr get_ui_render_window(void);
+ptr get_ui_device_context(void);

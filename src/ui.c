@@ -24,6 +24,7 @@ static struct {
     state_t core_state;
     ptr instance;
     ptr window;
+    ptr devctx;
     ptr statusbar;
     ptr menu;
     ptr render_window;
@@ -102,11 +103,12 @@ void init_ui(void)
         g_ui.instance,
         0
     );
-    assert(g_ui.window);
+    assert(g_ui.render_window);
+    g_ui.devctx = GetDC(g_ui.render_window);
 
     INITCOMMONCONTROLSEX inf = {
         .dwSize = sizeof(inf),
-        .dwICC = ICC_STANDARD_CLASSES | ICC_BAR_CLASSES | ICC_PROGRESS_CLASS,
+        .dwICC = ICC_STANDARD_CLASSES,
     };
     assert(InitCommonControlsEx(&inf));
     g_ui.statusbar = CreateWindowExA(
@@ -122,16 +124,17 @@ void init_ui(void)
     );
     assert(g_ui.statusbar);
     SendMessageA(g_ui.statusbar, SB_SETPARTS, 1, (i64)(i32[]){ -1 });
+    SendMessageA(g_ui.statusbar, SB_SETTEXTA, 0 | SBT_NOBORDERS, (i64)"");
+
     ShowWindow(g_ui.window, SW_SHOW);
     g_ui.state = STATE_INITIALIZED;
-    
-    set_ui_status("");
 }
 
 void free_ui(void)
 {
     if (g_ui.state == STATE_UNINITIALIZED) return;
 
+    ReleaseDC(g_ui.render_window, g_ui.devctx);
     DestroyWindow(g_ui.render_window);
     DestroyWindow(g_ui.window);
     UnregisterClassA(RENDER_WINDOW_CLASS_NAME, g_ui.instance);
@@ -177,10 +180,10 @@ u8 get_ui_event(ui_event_t *event)
     return true;
 }
 
-ptr get_ui_render_window(void)
+ptr get_ui_device_context(void)
 {
     assert(g_ui.state == STATE_INITIALIZED);
-    return g_ui.render_window;
+    return g_ui.devctx;
 }
 
 i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
@@ -199,14 +202,13 @@ i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
 
     case WM_SIZE:
         SendMessageA(g_ui.statusbar, WM_SIZE, 0, 0);
+
         RECT wr, sbr;
         assert(GetClientRect(g_ui.window, &wr));
         assert(GetClientRect(g_ui.statusbar, &sbr));
         assert(GetClientRect(g_ui.window, &wr));
-        RECT r = {
-            0, 0, wr.right, wr.bottom - sbr.bottom,
-        };
-        assert(SetWindowPos(g_ui.render_window, 0, r.left, r.top, r.right, r.bottom, 0));
+
+        assert(SetWindowPos(g_ui.render_window, 0, 0, 0, wr.right, wr.bottom - sbr.bottom, 0));
         break;
 
     case WM_COMMAND:
