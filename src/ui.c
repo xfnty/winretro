@@ -198,7 +198,7 @@ i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
     case WM_CLOSE:
         e.type = UI_EXIT;
         enqueue_event(e);
-        break;
+        return 1;
 
     case WM_SIZE:
         SendMessageA(g_ui.statusbar, WM_SIZE, 0, 0);
