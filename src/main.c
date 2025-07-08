@@ -2,17 +2,18 @@
 #include "gl.h"
 #include "log.h"
 #include "core.h"
+#include "error.h"
 #include "common.h"
 #include "windows.h"
 
 void _start(void)
 {
     init_log();
+
     init_ui();
     init_gl(get_ui_device_context());
     init_core("C:\\Dev\\personal\\cpp\\winretro\\.ignore\\swanstation_libretro.dll");
     load_game("C:\\Dev\\personal\\cpp\\winretro\\.ignore\\game.chd");
-    save_core_variables();
     ui_display_core_state(get_core_state());
 
     for (u8 running = true; running; )

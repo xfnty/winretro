@@ -1,6 +1,6 @@
 #include "ui.h"
 
-#include "assert.h"
+#include "error.h"
 #include "windows.h"
 
 #define WINDOW_CLASS_NAME        "winretro"
@@ -24,7 +24,7 @@ static struct {
     state_t core_state;
     ptr instance;
     ptr window;
-    ptr devctx;
+    ptr dev;
     ptr statusbar;
     ptr menu;
     ptr render_window;
@@ -43,24 +43,28 @@ void init_ui(void)
 {
     free_ui();
 
-    g_ui.instance = GetModuleHandleA(0);
+    assert_winapi_retval_report(g_ui.instance, g_ui.instance, GetModuleHandleA, "\"%s\"", 0);
 
-    ptr file_menu = CreateMenu();
-    assert(AppendMenuA(file_menu, 0, MENU_OPEN_CORE_ID,  MENU_OPEN_CORE_STR));
-    assert(AppendMenuA(file_menu, 0, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR));
-    assert(AppendMenuA(file_menu, 0, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR));
-    assert(AppendMenuA(file_menu, 0, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR));
-    assert(AppendMenuA(file_menu, MF_SEPARATOR, 0, 0));
-    assert(AppendMenuA(file_menu, 0, MENU_EXIT_ID, "Exit"));
-    ptr help_menu = CreateMenu();
-    assert(AppendMenuA(help_menu, 0, MENU_OPEN_WEBSITE_ID, MENU_OPEN_WEBSITE_STR));
-    g_ui.menu = CreateMenu();
-    assert(AppendMenuA(g_ui.menu, MF_POPUP, (u64)file_menu, "File"));
-    assert(AppendMenuA(g_ui.menu, MF_POPUP, (u64)help_menu, "Help"));
+    ptr file_menu;
+    assert_winapi_retval_report(file_menu, file_menu, CreateMenu, "");
+    assert_winapi_report(AppendMenuA, "%p, %u, %p, \"%s\"", file_menu, 0, MENU_OPEN_CORE_ID,  MENU_OPEN_CORE_STR);
+    assert_winapi_report(AppendMenuA, "%p, %u, %p, \"%s\"", file_menu, 0, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
+    assert_winapi_report(AppendMenuA, "%p, %u, %p, \"%s\"", file_menu, 0, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
+    assert_winapi_report(AppendMenuA, "%p, %u, %p, \"%s\"", file_menu, 0, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
+    assert_winapi_report(AppendMenuA, "%p, %u, %p, \"%s\"", file_menu, MF_SEPARATOR, 0, 0);
+    assert_winapi_report(AppendMenuA, "%p, %u, %p, \"%s\"", file_menu, 0, MENU_EXIT_ID, "Exit");
 
-    ModifyMenuA(g_ui.menu, MENU_OPEN_ROM_ID,   MF_DISABLED, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
-    ModifyMenuA(g_ui.menu, MENU_LOAD_STATE_ID, MF_DISABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
-    ModifyMenuA(g_ui.menu, MENU_SAVE_STATE_ID, MF_DISABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
+    ptr help_menu;
+    assert_winapi_retval_report(help_menu, help_menu, CreateMenu, "");
+    assert_winapi_report(AppendMenuA, "%p, %u, %p, \"%s\"", help_menu, 0, MENU_OPEN_WEBSITE_ID, MENU_OPEN_WEBSITE_STR);
+
+    assert_winapi_retval_report(g_ui.menu, g_ui.menu, CreateMenu, "");
+    assert_winapi_report(AppendMenuA, "%p, %u, %p, \"%s\"", g_ui.menu, MF_POPUP, (u64)file_menu, "File");
+    assert_winapi_report(AppendMenuA, "%p, %u, %p, \"%s\"", g_ui.menu, MF_POPUP, (u64)help_menu, "Help");
+
+    assert_winapi_report(ModifyMenuA, "%p, %u, %u, %p, \"%s\"", g_ui.menu, MENU_OPEN_ROM_ID,   MF_DISABLED, MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
+    assert_winapi_report(ModifyMenuA, "%p, %u, %u, %p, \"%s\"", g_ui.menu, MENU_LOAD_STATE_ID, MF_DISABLED, MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
+    assert_winapi_report(ModifyMenuA, "%p, %u, %u, %p, \"%s\"", g_ui.menu, MENU_SAVE_STATE_ID, MF_DISABLED, MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
 
     WNDCLASSA window_class = {
         .hInstance = g_ui.instance,
@@ -68,11 +72,16 @@ void init_ui(void)
         .lpfnWndProc = window_event_handler,
         .hCursor = LoadCursorA(0, IDC_ARROW),
     };
-    assert(RegisterClassA(&window_class));
-    g_ui.window = CreateWindowExA(
+    assert_winapi_report(RegisterClassA, "%p", &window_class);
+
+    assert_winapi_retval_report(
+        g_ui.window,
+        g_ui.window,
+        CreateWindowExA,
+        "%u, \"%s\", \"%s\", %u, %d, %d, %d, %d, %p, %p, %p, %p",
         0,
         WINDOW_CLASS_NAME,
-        "Tiny Libretro Frontend",
+        "WinRetro",
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
         CW_USEDEFAULT, CW_USEDEFAULT,
@@ -81,7 +90,6 @@ void init_ui(void)
         g_ui.instance,
         0
     );
-    assert(g_ui.window);
 
     WNDCLASSA render_window_class = {
         .style = CS_OWNDC,
@@ -91,8 +99,13 @@ void init_ui(void)
         .hCursor = LoadCursorA(0, IDC_ARROW),
         .hbrBackground = GetStockObject(BLACK_BRUSH),
     };
-    assert(RegisterClassA(&render_window_class));
-    g_ui.render_window = CreateWindowExA(
+    assert_winapi_report(RegisterClassA, "%p", &render_window_class);
+
+    assert_winapi_retval_report(
+        g_ui.render_window,
+        g_ui.render_window,
+        CreateWindowExA,
+        "%u, \"%s\", \"%s\", %u, %d, %d, %d, %d, %p, %p, %p, %p",
         0,
         RENDER_WINDOW_CLASS_NAME,
         0,
@@ -103,15 +116,20 @@ void init_ui(void)
         g_ui.instance,
         0
     );
-    assert(g_ui.render_window);
-    g_ui.devctx = GetDC(g_ui.render_window);
+
+    assert_winapi_retval_report(g_ui.dev, g_ui.dev, GetDC, "%p", g_ui.render_window);
 
     INITCOMMONCONTROLSEX inf = {
         .dwSize = sizeof(inf),
         .dwICC = ICC_STANDARD_CLASSES,
     };
-    assert(InitCommonControlsEx(&inf));
-    g_ui.statusbar = CreateWindowExA(
+    assert_report(InitCommonControlsEx(&inf));
+
+    assert_winapi_retval_report(
+        g_ui.statusbar,
+        g_ui.statusbar,
+        CreateWindowExA,
+        "%u, \"%s\", \"%s\", %u, %d, %d, %d, %d, %p, %p, %p, %p",
         0,
         STATUSCLASSNAME,
         0,
@@ -122,7 +140,6 @@ void init_ui(void)
         g_ui.instance,
         0
     );
-    assert(g_ui.statusbar);
     SendMessageA(g_ui.statusbar, SB_SETPARTS, 1, (i64)(i32[]){ -1 });
     SendMessageA(g_ui.statusbar, SB_SETTEXTA, 0 | SBT_NOBORDERS, (i64)"");
 
@@ -132,37 +149,38 @@ void init_ui(void)
 
 void free_ui(void)
 {
-    if (g_ui.state == STATE_UNINITIALIZED) return;
+    check_return(g_ui.state != STATE_UNINITIALIZED);
 
-    ReleaseDC(g_ui.render_window, g_ui.devctx);
+    ReleaseDC(g_ui.render_window, g_ui.dev);
     DestroyWindow(g_ui.render_window);
     DestroyWindow(g_ui.window);
     UnregisterClassA(RENDER_WINDOW_CLASS_NAME, g_ui.instance);
     UnregisterClassA(WINDOW_CLASS_NAME, g_ui.instance);
     RtlZeroMemory(&g_ui, sizeof(g_ui));
+    
+    SetLastError(0);
 }
 
 void ui_display_core_state(state_t state)
 {
-    assert(g_ui.state == STATE_INITIALIZED);
-
-    if (g_ui.core_state == state) return;
+    assert_report(g_ui.state == STATE_INITIALIZED);
+    check_return(g_ui.core_state != state);
     
     g_ui.core_state = state;
-    ModifyMenuA(g_ui.menu, MENU_OPEN_ROM_ID,   (state >= STATE_INITIALIZED) ? (MF_ENABLED) : (MF_DISABLED), MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
-    ModifyMenuA(g_ui.menu, MENU_LOAD_STATE_ID, (state == STATE_ACTIVE)      ? (MF_ENABLED) : (MF_DISABLED), MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
-    ModifyMenuA(g_ui.menu, MENU_SAVE_STATE_ID, (state == STATE_ACTIVE)      ? (MF_ENABLED) : (MF_DISABLED), MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
+    assert_winapi_report(ModifyMenuA, "%p, %u, %u, %p, \"%s\"", g_ui.menu, MENU_OPEN_ROM_ID,   (state >= STATE_INITIALIZED) ? (MF_ENABLED) : (MF_DISABLED), MENU_OPEN_ROM_ID,   MENU_OPEN_ROM_STR);
+    assert_winapi_report(ModifyMenuA, "%p, %u, %u, %p, \"%s\"", g_ui.menu, MENU_LOAD_STATE_ID, (state == STATE_ACTIVE)      ? (MF_ENABLED) : (MF_DISABLED), MENU_LOAD_STATE_ID, MENU_LOAD_STATE_STR);
+    assert_winapi_report(ModifyMenuA, "%p, %u, %u, %p, \"%s\"", g_ui.menu, MENU_SAVE_STATE_ID, (state == STATE_ACTIVE)      ? (MF_ENABLED) : (MF_DISABLED), MENU_SAVE_STATE_ID, MENU_SAVE_STATE_STR);
 }
 
 void set_ui_status(cstr text)
 {
-    assert(g_ui.state == STATE_INITIALIZED);
+    assert_report(g_ui.state == STATE_INITIALIZED);
     SendMessageA(g_ui.statusbar, SB_SETTEXTA, 0 | SBT_NOBORDERS, (i64)text);
 }
 
 void poll_ui_events(void)
 {
-    assert(g_ui.state == STATE_INITIALIZED);
+    assert_report(g_ui.state == STATE_INITIALIZED);
     for (MSG msg; PeekMessageA(&msg, g_ui.window, 0, 0, PM_REMOVE) != 0;)
     {
         TranslateMessage(&msg);
@@ -172,9 +190,9 @@ void poll_ui_events(void)
 
 u8 get_ui_event(ui_event_t *event)
 {
-    assert(g_ui.state == STATE_INITIALIZED);
-    assert(event);
-    if (!g_ui.events.count) return false;
+    assert_report(g_ui.state == STATE_INITIALIZED);
+    assert_report(event);
+    check_return_value(g_ui.events.count, false);
     *event = g_ui.events.array[(g_ui.events.head++) % countof(g_ui.events.array)];
     g_ui.events.count--;
     return true;
@@ -182,14 +200,13 @@ u8 get_ui_event(ui_event_t *event)
 
 ptr get_ui_device_context(void)
 {
-    assert(g_ui.state == STATE_INITIALIZED);
-    return g_ui.devctx;
+    assert_report(g_ui.state == STATE_INITIALIZED);
+    return g_ui.dev;
 }
 
 i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
 {
-    if (hwnd != g_ui.window)
-        return DefWindowProcA(hwnd, msg, wp, lp);
+    check_return_value(hwnd == g_ui.window, DefWindowProcA(hwnd, msg, wp, lp));
 
     ui_event_t e;
 
@@ -204,11 +221,11 @@ i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
         SendMessageA(g_ui.statusbar, WM_SIZE, 0, 0);
 
         RECT wr, sbr;
-        assert(GetClientRect(g_ui.window, &wr));
-        assert(GetClientRect(g_ui.statusbar, &sbr));
-        assert(GetClientRect(g_ui.window, &wr));
+        assert_report(GetClientRect(g_ui.window, &wr));
+        assert_report(GetClientRect(g_ui.statusbar, &sbr));
+        assert_report(GetClientRect(g_ui.window, &wr));
 
-        assert(SetWindowPos(g_ui.render_window, 0, 0, 0, wr.right, wr.bottom - sbr.bottom, 0));
+        assert_report(SetWindowPos(g_ui.render_window, 0, 0, 0, wr.right, wr.bottom - sbr.bottom, 0));
         break;
 
     case WM_COMMAND:
@@ -281,8 +298,8 @@ u8 open_file_dialog(u8 save, cstr title, cstr filename, cstr extensions, c8 *pat
 
 void enqueue_event(ui_event_t event)
 {
-    assert(g_ui.state == STATE_INITIALIZED);
-    assert(g_ui.events.count + 1 <= countof(g_ui.events.array));
+    assert_report(g_ui.state == STATE_INITIALIZED);
+    assert_report(g_ui.events.count + 1 <= countof(g_ui.events.array));
     g_ui.events.array[(g_ui.events.head + (g_ui.events.count++)) % countof(g_ui.events.array)]
         = event;
 }

@@ -1,6 +1,6 @@
 #include "common.h"
 
-#include "assert.h"
+#include "error.h"
 #include "windows.h"
 
 u32 str_equals(cstr a, cstr b, u32 minsize)
@@ -22,13 +22,15 @@ u32 str_length(cstr a)
 u32 snprintf(c8 *buffer, u32 maxsize, cstr format, ...)
 {
     assert(buffer && format);
-    return vsnprintf(buffer, maxsize, format, va_create(format));
+    va_list args;
+    va_start(args, format);
+    return vsnprintf(buffer, maxsize, format, args);
 }
 
 u32 vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args)
 {
     assert(buffer && format && args);
-    if (!maxsize) return 0;
+    check_return_value(maxsize, 0);
 
     u32 fi = 0, bi = 0;
 
@@ -76,8 +78,8 @@ u32 vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args)
 
             case 's':
                 str = va_arg(args, cstr);
-                str = (str) ? (str) : ("(null)");
-                str = (str && str[0]) ? (str) : ("(empty)");
+                if (!str) str = "(null)";
+                else if (!str[0]) str = "(empty)";
                 while (bi < maxsize - 1 && *str) buffer[bi++] = *(str++);
                 fi++;
                 break;
@@ -139,7 +141,7 @@ cstr get_root_directory(void)
     if (!path[0])
     {
         u32 l = GetModuleFileNameA(0, path, sizeof(path) - 1);
-        assert(l > 0);
+        assert(l);
         while (path[l] != '\\') l--;
         path[l] = '\0';
     }
@@ -153,4 +155,18 @@ f64 get_time(void)
     assert(QueryPerformanceFrequency(&f));
     assert(QueryPerformanceCounter(&c));
     return (f64)c / f;
+}
+
+cstr get_filename(cstr path)
+{
+    check_return_value(path, 0);
+    for (u32 i = 0; path[i + 1]; i++) if (path[i] == '\\') { path += i + 1; i = 0; }
+    return path;
+}
+
+#pragma function(memset)
+ptr memset(ptr dst, i32 byte, u64 size)
+{
+    RtlFillMemory(dst, size, byte);
+    return dst;
 }

@@ -2,7 +2,7 @@
 
 #include "gl.h"
 #include "log.h"
-#include "assert.h"
+#include "error.h"
 #include "windows.h"
 
 #define CORE_SETTINGS_FILENAME_FORMAT "%s (Variables).ini"
@@ -191,22 +191,29 @@ static i16  core_input_state_callback(u32 port, u32 device, u32 index, u32 id);
 
 void init_core(cstr dll)
 {
-    assert(dll);
+    assert_report(dll);
 
     free_core();
 
-    struct { c8 *str; u32 size; cstr format; } paths[] = {
-        { g_core.paths.save, sizeof(g_core.paths.save), "%s\\save" },
-        { g_core.paths.system, sizeof(g_core.paths.system), "%s\\system" },
-        { g_core.paths.settings, sizeof(g_core.paths.settings), "%s\\settings" },
+    struct { c8 *str; cstr format; u32 size; } paths[] = {
+        { g_core.paths.save, "%s\\save", sizeof(g_core.paths.save) },
+        { g_core.paths.system, "%s\\system", sizeof(g_core.paths.system) },
+        { g_core.paths.settings, "%s\\settings", sizeof(g_core.paths.settings) },
     };
     for (u32 i = 0; i < countof(paths); i++)
     {
         snprintf(paths[i].str, paths[i].size, paths[i].format, get_root_directory());
-        CreateDirectoryA(paths[i].str, 0);
+        check_print_error_goto(
+            CreateDirectoryA(paths[i].str, 0) || GetLastError() == ERROR_ALREADY_EXISTS,
+            Failure,
+            "CreateDirectoryA(\"%s\", %p) failed: %s (%d)",
+            get_winapi_error(GetLastError(), paths[i].str, 0),
+            GetLastError()
+        );
+        SetLastError(0);
     }
 
-    assert_winapi_goto(g_core.module, g_core.module, Failure, LoadLibraryA, "\"%s\"", dll);
+    check_winapi_retval_report_goto(g_core.module, g_core.module, Failure, LoadLibraryA, "\"%s\"", dll);
 
     struct {
         cstr symbol;
@@ -218,12 +225,18 @@ void init_core(cstr dll)
     };
     for (u32 i = 0; i < countof(load_list); i++)
     {
-        *load_list[i].func = (ptr)GetProcAddress(g_core.module, load_list[i].symbol);
-        checkp_goto(*load_list[i].func, Failure, "symbol \"%s\" not found", load_list[i].symbol);
+        check_winapi_retval_report_goto(
+            *load_list[i].func,
+            *load_list[i].func,
+            Failure,
+            GetProcAddress,
+            "%p, \"%s\"",
+            g_core.module, load_list[i].symbol
+        );
     }
 
     u32 api = g_core.api.retro_api_version();
-    checkp_goto(api == 1, Failure, "core uses unsupported API version %d", api);
+    check_print_error_goto(api == 1, Failure, "core uses unsupported API version %d", api);
 
     g_core.api.retro_get_system_info(&g_core.info);
 
@@ -265,15 +278,16 @@ void free_core(void)
         save_core_variables();
         g_core.api.retro_deinit();
         print("unloaded %s", g_core.info.library_name);
-        FreeLibrary(g_core.module);
+        check_winapi_report(FreeLibrary, "%p", g_core.module);
     }
 
     RtlZeroMemory(&g_core, sizeof(g_core));
+    SetLastError(0);
 }
 
 void load_game(cstr rom)
 {
-    if (g_core.state < STATE_INITIALIZED) return;
+    check_return(g_core.state >= STATE_INITIALIZED);
     if (g_core.state == STATE_ACTIVE) unload_game();
 
     retro_game_info info = { .path = rom };
@@ -286,8 +300,7 @@ void load_game(cstr rom)
 
 void unload_game(void)
 {
-    if (g_core.state < STATE_ACTIVE) return;
-
+    check_return(g_core.state == STATE_ACTIVE);
     g_core.api.retro_unload_game();
     g_core.state = STATE_INITIALIZED;
     print("unloaded game");
@@ -295,18 +308,18 @@ void unload_game(void)
 
 void run_frame(void)
 {
-    assert(g_core.state == STATE_ACTIVE);
+    assert_report(g_core.state == STATE_ACTIVE);
     g_core.api.retro_run();
 }
 
 void load_game_state(cstr path)
 {
-    if (g_core.state != STATE_ACTIVE) return;
+    check_return(g_core.state == STATE_ACTIVE);
     
     c8 *contents = 0;
 
     ptr file = INVALID_HANDLE_VALUE;
-    assert_winapi_goto(
+    check_winapi_retval_report_goto(
         file,
         file != INVALID_HANDLE_VALUE,
         Failure,
@@ -316,7 +329,7 @@ void load_game_state(cstr path)
     );
 
     u32 size;
-    assert_winapi_goto(
+    check_winapi_retval_report_goto(
         size,
         size != INVALID_FILE_SIZE,
         Failure,
@@ -325,11 +338,11 @@ void load_game_state(cstr path)
         file, 0
     );
     u64 expected_size = g_core.api.retro_serialize_size();
-    checkp_goto(size == expected_size, Failure, "wrong save state size (%u, %u expected)", size, expected_size);
+    check_print_error_goto(size == expected_size, Failure, "wrong save state size (%u, %u expected)", size, expected_size);
 
     contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
     u32 ok, bytes_read = 0;
-    assert_winapi_goto(
+    check_winapi_retval_report_goto(
         ok,
         ok && bytes_read == size,
         Failure,
@@ -337,24 +350,25 @@ void load_game_state(cstr path)
         "%p, %p, %u, %p, %p",
         file, contents, size, &bytes_read, 0
     );
-    checkp_goto(g_core.api.retro_unserialize(contents, size), Failure, "retro_unserialize() failed");
+    
+    check_print_error_goto(g_core.api.retro_unserialize(contents, size), Failure, "retro_unserialize() failed");
 
     print("loaded game state from \"%s\"", path);
 
     Failure:
-    CloseHandle(file);
-    HeapFree(GetProcessHeap(), 0, contents);
+    check_winapi_report(CloseHandle, "%p", file);
+    check_winapi_report(HeapFree, "%p, %u, %p", GetProcessHeap(), 0, contents);
     return;
 }
 
 void save_game_state(cstr path)
 {
-    if (g_core.state != STATE_ACTIVE) return;
+    check_return(g_core.state == STATE_ACTIVE);
 
     c8 *contents = 0;
 
     ptr file = INVALID_HANDLE_VALUE;
-    assert_winapi_goto(
+    check_winapi_retval_report_goto(
         file,
         file != INVALID_HANDLE_VALUE,
         Failure,
@@ -365,10 +379,11 @@ void save_game_state(cstr path)
 
     u32 size = (u32)g_core.api.retro_serialize_size();;
     contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
-    checkp_goto(g_core.api.retro_serialize(contents, size), Failure, "retro_serialize() failed");
+
+    check_print_error_goto(g_core.api.retro_serialize(contents, size), Failure, "retro_serialize() failed");
 
     u32 ok, bytes_written = 0;
-    assert_winapi_goto(
+    check_winapi_retval_report_goto(
         ok,
         ok && bytes_written == size,
         Failure,
@@ -380,8 +395,8 @@ void save_game_state(cstr path)
     print("saved game state to \"%s\"", path);
 
     Failure:
-    CloseHandle(file);
-    HeapFree(GetProcessHeap(), 0, contents);
+    check_winapi_report(CloseHandle, "%p", file);
+    check_winapi_report(HeapFree, "%p, %u, %p", GetProcessHeap(), 0, contents);
     return;
 }
 
@@ -414,7 +429,13 @@ void load_core_variables(void)
 
     c8 *contents = 0;
 
-    ptr file = CreateFileA(
+    ptr file;
+    check_winapi_retval_report_goto(
+        file,
+        file != INVALID_HANDLE_VALUE,
+        Failure,
+        CreateFileA,
+        "\"%s\", %u, %u, %p, %u, %u, %p",
         g_core.paths.settings_file,
         GENERIC_READ,
         FILE_SHARE_READ,
@@ -423,15 +444,21 @@ void load_core_variables(void)
         FILE_ATTRIBUTE_NORMAL,
         0
     );
-    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_core.paths.settings_file, GetLastError());
+    if (GetLastError() == ERROR_ALREADY_EXISTS) SetLastError(0);
 
-    u32 size = GetFileSize(file, 0);
-    checkp_goto(size != INVALID_FILE_SIZE, Failure, "GetFileSize() failed (%d)", GetLastError());
+    u32 size;
+    check_winapi_retval_report_goto(size, size != INVALID_FILE_SIZE, Failure, GetFileSize, "%p, %p", file, 0);
 
     contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
-    u32 bytes_read = 0;
-    u32 ok = ReadFile(file, contents, size, &bytes_read, 0);
-    checkp_goto(ok && bytes_read == size, Failure, "ReadFile(\"%s\") failed (%d, %u/%u B)", g_core.paths.settings_file, GetLastError(), bytes_read, size);
+    u32 bytes_read = 0, ok;
+    check_winapi_retval_report_goto(
+        ok,
+        ok && bytes_read == size,
+        Failure,
+        ReadFile,
+        "%p, %p, %u, %p, %p",
+        file, contents, size, &bytes_read, 0
+    );
 
     for (u32 i = 0; i < size; )
     {
@@ -459,8 +486,8 @@ void load_core_variables(void)
     print("loaded core settings from \"%s\"", g_core.paths.settings_file);
 
     Failure:
-    CloseHandle(file);
-    HeapFree(GetProcessHeap(), 0, contents);
+    check_winapi_report(CloseHandle, "%p", file);
+    check_winapi_report(HeapFree, "%p, %u, %p", GetProcessHeap(), 0, contents);
     return;
 }
 
@@ -468,7 +495,13 @@ void save_core_variables(void)
 {
     c8 *contents = 0;
 
-    ptr file = CreateFileA(
+    ptr file;
+    check_winapi_retval_report_goto(
+        file,
+        file != INVALID_HANDLE_VALUE,
+        Failure,
+        CreateFileA,
+        "\"%s\", %u, %u, %p, %u, %u, %p",
         g_core.paths.settings_file,
         GENERIC_WRITE,
         0,
@@ -477,7 +510,7 @@ void save_core_variables(void)
         FILE_ATTRIBUTE_NORMAL,
         0
     );
-    checkp_goto(file != INVALID_HANDLE_VALUE, Failure, "CreateFileA(\"%s\") failed (%d)", g_core.paths.settings_file, GetLastError());
+    if (GetLastError() == ERROR_ALREADY_EXISTS) SetLastError(0);
 
     u32 size = sizeof(g_core.vars.array[0]) * g_core.vars.count + 1;
     contents = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, size);
@@ -492,18 +525,24 @@ void save_core_variables(void)
             g_core.vars.array[j].key,
             g_core.vars.array[j].value
         );
-        assert(bytes_to_write <= size);
+        assert_report(bytes_to_write <= size);
     }
 
-    u32 bytes_written = 0;
-    u32 ok = WriteFile(file, contents, bytes_to_write, &bytes_written, 0);
-    checkp_goto(ok && bytes_written == bytes_to_write, Failure, "WriteFile(\"%s\") failed (%d, %u/%u B)", g_core.paths.settings_file, GetLastError(), bytes_written, bytes_to_write);
+    u32 bytes_written = 0, ok;
+    check_winapi_retval_report_goto(
+        ok,
+        ok && bytes_written == bytes_to_write,
+        Failure,
+        WriteFile,
+        "%p, %p, %u, %p, %p",
+        file, contents, bytes_to_write, &bytes_written, 0
+    );
 
     print("saved core settings to \"%s\"", g_core.paths.settings_file);
 
     Failure:
-    CloseHandle(file);
-    HeapFree(GetProcessHeap(), 0, contents);
+    check_winapi_report(CloseHandle, "%p", file);
+    check_winapi_report(HeapFree, "%p, %u, %p", GetProcessHeap(), 0, contents);
     return;
 }
 
@@ -549,7 +588,9 @@ void core_log_callback(u32 level, cstr format, ...)
     (void)level;
     c8 buffer[1024];
 
-    u32 l = vsnprintf(buffer, sizeof(buffer) - 1, format, va_create(format));
+    va_list args;
+    va_start(args, format);
+    u32 l = vsnprintf(buffer, sizeof(buffer) - 1, format, args);
     for (u32 i = 0; i < l; i++) if (buffer[i] < ' ' || buffer[i] > '~') buffer[i] = ' ';
     buffer[l] = '\0';
 
@@ -634,7 +675,6 @@ u8 core_environment_callback(u32 cmd, ptr data)
 void core_video_callback(ptr data, u32 width, u32 height, u64 pitch)
 {
     (void)data; (void)width; (void)height; (void)pitch;
-    // print("frame %ux%u %p", width, height, data);
 }
 
 void core_audio_sample_callback(i16 left, i16 right)

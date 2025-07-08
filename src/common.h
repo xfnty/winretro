@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdarg.h>
+
 /* defines */
 #define true 1u
 #define false 0
@@ -20,7 +22,7 @@ typedef float               f32;
 typedef double              f64;
 typedef const char         *cstr;
 typedef void               *ptr;
-typedef unsigned char      *va_list;
+// typedef unsigned char      *va_list;
 
 typedef enum state_t state_t;
 enum state_t {
@@ -37,8 +39,8 @@ enum state_t {
 #define min(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 #define max(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define countof(_a) (sizeof(_a)/sizeof((_a)[0]))
-#define va_create(_last_arg) ((u8*)&(_last_arg) + 8)
-#define va_arg(_list, _T) ( ( sizeof(_T) > 8) ? (**(_T**)((_list += 8) - 8)) : ( *(_T* )((_list += 8) - 8)) )
+// #define va_create(_last_arg) ((u8*)&(_last_arg) + 8)
+// #define va_arg(_list, _T) ( ( sizeof(_T) > 8) ? (**(_T**)((_list += 8) - 8)) : ( *(_T* )((_list += 8) - 8)) )
 
 
 /* function declarations */
@@ -48,3 +50,7 @@ u32  snprintf(c8 *buffer, u32 maxsize, cstr format, ...);
 u32  vsnprintf(c8 *buffer, u32 maxsize, cstr format, va_list args);
 cstr get_root_directory(void);
 f64  get_time(void);
+cstr get_filename(cstr full_path);
+
+ptr memset(ptr dst, i32 byte, u64 size);
+#pragma intrinsic(memset)

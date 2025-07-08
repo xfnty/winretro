@@ -224,9 +224,6 @@ struct SIZE {
 };
 
 
-/* function declarations */
-cstr get_last_error_text(u32 code, ...);
-
 /* kernel32.dll */
 u32 FormatMessageA(u32 flags, ptr source, u32 msg, u32 lang, c8 *buf, u32 size, va_list *args);
 void GetSystemInfo(SYSTEM_INFO *info);
