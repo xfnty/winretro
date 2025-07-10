@@ -5,6 +5,7 @@
 typedef enum ui_event_type_t ui_event_type_t;
 enum ui_event_type_t {
     UI_EXIT,
+    UI_RESIZE,
     UI_OPEN_CORE,
     UI_OPEN_ROM,
     UI_LOAD_STATE,
@@ -16,6 +17,10 @@ struct ui_event_t {
     ui_event_type_t type;
     union {
         c8 path[256];
+        struct {
+            u32 x;
+            u32 y;
+        } size;
     } value;
 };
 

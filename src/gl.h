@@ -9,4 +9,6 @@ void free_gl(void);
 u64 get_gl_framebuffer(void);
 ptr get_gl_proc_address(cstr name);
 
+void set_gl_window_size(u32 w, u32 h);
+
 void present_frame(void);

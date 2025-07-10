@@ -92,7 +92,15 @@ typedef enum retro_hw_context_type retro_hw_context_type;
 enum retro_hw_context_type {
    RETRO_HW_CONTEXT_NONE             = 0,
    RETRO_HW_CONTEXT_OPENGL           = 1,
+   RETRO_HW_CONTEXT_OPENGLES2        = 2,
    RETRO_HW_CONTEXT_OPENGL_CORE      = 3,
+   RETRO_HW_CONTEXT_OPENGLES3        = 4,
+   RETRO_HW_CONTEXT_OPENGLES_VERSION = 5,
+   RETRO_HW_CONTEXT_VULKAN           = 6,
+   RETRO_HW_CONTEXT_D3D11            = 7,
+   RETRO_HW_CONTEXT_D3D10            = 8,
+   RETRO_HW_CONTEXT_D3D12            = 9,
+   RETRO_HW_CONTEXT_D3D9             = 10,
 };
 
 typedef enum retro_pixel_format retro_pixel_format;
@@ -622,6 +630,7 @@ u8 core_environment_callback(u32 cmd, ptr data)
 
     case RETRO_ENVIRONMENT_SET_HW_RENDER:
         g_core.hw = data;
+        print("core attempts to set hardware renderer to %u", g_core.hw->context_type);
         check_return_value(
             g_core.hw->context_type == RETRO_HW_CONTEXT_OPENGL_CORE
             && g_core.hw->version_major == 3

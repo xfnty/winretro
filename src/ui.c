@@ -225,7 +225,12 @@ i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
         assert_report(GetClientRect(g_ui.statusbar, &sbr));
         assert_report(GetClientRect(g_ui.window, &wr));
 
-        assert_report(SetWindowPos(g_ui.render_window, 0, 0, 0, wr.right, wr.bottom - sbr.bottom, 0));
+        e.type = UI_RESIZE;
+        e.value.size.x = wr.right;
+        e.value.size.y = wr.bottom - sbr.bottom;
+        enqueue_event(e);
+
+        assert_report(SetWindowPos(g_ui.render_window, 0, 0, 0, e.value.size.x, e.value.size.y, 0));
         break;
 
     case WM_COMMAND:
@@ -298,7 +303,6 @@ u8 open_file_dialog(u8 save, cstr title, cstr filename, cstr extensions, c8 *pat
 
 void enqueue_event(ui_event_t event)
 {
-    assert_report(g_ui.state == STATE_INITIALIZED);
     assert_report(g_ui.events.count + 1 <= countof(g_ui.events.array));
     g_ui.events.array[(g_ui.events.head + (g_ui.events.count++)) % countof(g_ui.events.array)]
         = event;
