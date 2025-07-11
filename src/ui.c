@@ -19,6 +19,74 @@
 #define MENU_EXIT_ID          4
 #define MENU_OPEN_WEBSITE_ID  5
 
+static const ui_key_t g_vk_to_input_map[0x100] = {
+    [0x08] = UI_KEY_BACKSPACE,
+    [0x09] = UI_KEY_TAB,
+    [0x0D] = UI_KEY_RETURN,
+    [0xA0] = UI_KEY_LSHIFT,
+    [0xA2] = UI_KEY_LCONTROL,
+    [0xA4] = UI_KEY_LALT,
+    [0xA1] = UI_KEY_RSHIFT,
+    [0xA3] = UI_KEY_RCONTROL,
+    [0xA5] = UI_KEY_RALT,
+    [0x1B] = UI_KEY_ESCAPE,
+    [0x20] = UI_KEY_SPACE,
+    [0x25] = UI_KEY_LEFT,
+    [0x27] = UI_KEY_RIGHT,
+    [0x26] = UI_KEY_UP,
+    [0x28] = UI_KEY_DOWN,
+    ['0']  = UI_KEY_0,
+    ['1']  = UI_KEY_1,
+    ['2']  = UI_KEY_2,
+    ['3']  = UI_KEY_3,
+    ['4']  = UI_KEY_4,
+    ['5']  = UI_KEY_5,
+    ['6']  = UI_KEY_6,
+    ['7']  = UI_KEY_7,
+    ['8']  = UI_KEY_8,
+    ['9']  = UI_KEY_9,
+    ['A']  = UI_KEY_A,
+    ['B']  = UI_KEY_B,
+    ['C']  = UI_KEY_C,
+    ['D']  = UI_KEY_D,
+    ['E']  = UI_KEY_E,
+    ['F']  = UI_KEY_F,
+    ['G']  = UI_KEY_G,
+    ['H']  = UI_KEY_H,
+    ['I']  = UI_KEY_I,
+    ['J']  = UI_KEY_J,
+    ['K']  = UI_KEY_K,
+    ['L']  = UI_KEY_L,
+    ['M']  = UI_KEY_M,
+    ['N']  = UI_KEY_N,
+    ['O']  = UI_KEY_O,
+    ['P']  = UI_KEY_P,
+    ['Q']  = UI_KEY_Q,
+    ['R']  = UI_KEY_R,
+    ['S']  = UI_KEY_S,
+    ['T']  = UI_KEY_T,
+    ['U']  = UI_KEY_U,
+    ['V']  = UI_KEY_V,
+    ['W']  = UI_KEY_W,
+    ['X']  = UI_KEY_X,
+    ['Y']  = UI_KEY_Y,
+    ['Z']  = UI_KEY_Z,
+    [0x6B] = UI_KEY_ADD,
+    [0x6D] = UI_KEY_SUB,
+    [0x70] = UI_KEY_F1,
+    [0x71] = UI_KEY_F2,
+    [0x72] = UI_KEY_F3,
+    [0x73] = UI_KEY_F4,
+    [0x74] = UI_KEY_F5,
+    [0x75] = UI_KEY_F6,
+    [0x76] = UI_KEY_F7,
+    [0x77] = UI_KEY_F8,
+    [0x78] = UI_KEY_F9,
+    [0x79] = UI_KEY_F10,
+    [0x7A] = UI_KEY_F11,
+    [0x7B] = UI_KEY_F12,
+};
+
 static struct {
     state_t state;
     state_t core_state;
@@ -231,6 +299,14 @@ i64 WINAPI window_event_handler(ptr hwnd, u32 msg, u64 wp, i64 lp)
         enqueue_event(e);
 
         assert_report(SetWindowPos(g_ui.render_window, 0, 0, 0, e.value.size.x, e.value.size.y, 0));
+        break;
+
+    case WM_KEYUP:
+    case WM_KEYDOWN:
+        if (wp > countof(g_vk_to_input_map) || !g_vk_to_input_map[wp]) break;
+        e.type = UI_INPUT;
+        e.value.input.key = g_vk_to_input_map[wp] | ((msg == WM_KEYDOWN) ? (UI_KEY_STATE_MASK) : (0));
+        enqueue_event(e);
         break;
 
     case WM_COMMAND:

@@ -37,6 +37,8 @@
 #define WM_COMMAND                         0x0111
 #define WM_ERASEBKGND                      0x0014
 #define WM_USER                            0x0400
+#define WM_KEYDOWN                         0x0100
+#define WM_KEYUP                           0x0101
 #define PM_REMOVE                          0x0001
 #define CS_OWNDC                           0x0020
 #define PFD_DOUBLEBUFFER                   0x00000001

@@ -182,6 +182,7 @@ static struct {
         c8 settings[256];
         c8 settings_file[256];
     } paths;
+    i16 inputs[_CORE_INPUT_COUNT];
 } g_core;
 
 static void load_core_variables(void);
@@ -413,6 +414,11 @@ state_t get_core_state(void)
     return g_core.state;
 }
 
+f32 get_target_fps(void)
+{
+    return (f32)g_core.avinfo.timing.fps;
+}
+
 cstr get_core_system_directory(void)
 {
     return g_core.paths.system;
@@ -421,6 +427,13 @@ cstr get_core_system_directory(void)
 cstr get_core_save_directory(void)
 {
     return g_core.paths.save;
+}
+
+void set_core_input(core_input_t input, i16 value)
+{
+    assert_report(input < _CORE_INPUT_COUNT);
+    // assert_report(g_core.state >= STATE_ACTIVE);
+    g_core.inputs[input] = value;
 }
 
 void load_core_variables(void)
@@ -662,28 +675,19 @@ u8 core_environment_callback(u32 cmd, ptr data)
         retro_variable *v = data;
         return (v->value = get_core_variable(v->key)) != 0;
 
-    case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE:
-    case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION:
-    case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION:
-    case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE:
-    case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO:
-    case RETRO_ENVIRONMENT_GET_VFS_INTERFACE:
-    case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
-    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY:
-    case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK:
-    case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS:
     case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-    case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER:
         return false;
     }
 
-    print("ignored core command %u (%u, %p)", cmd, cmd & (~RETRO_ENVIRONMENT_EXPERIMENTAL), data);
+    cmd &= ~RETRO_ENVIRONMENT_EXPERIMENTAL;
+    print("ignored core command %u (%p)", cmd, data);
     return false;
 }
 
 void core_video_callback(ptr data, u32 width, u32 height, u64 pitch)
 {
-    (void)data; (void)width; (void)height; (void)pitch;
+    (void)data; (void)pitch;
+    set_gl_render_resolution(width, height);
 }
 
 void core_audio_sample_callback(i16 left, i16 right)
@@ -703,6 +707,10 @@ void core_input_poll_callback(void)
 
 i16 core_input_state_callback(u32 port, u32 device, u32 index, u32 id)
 {
-    (void)port; (void)device; (void)index; (void)id;
-    return 0;
+    check_return_value(port == 0, 0);
+    check_return_value(device == 1 /* aka RETRO_DEVICE_JOYPAD */, 0);
+    // check_return_value(index == 0, 0);
+    (void)index;
+    check_return_value(id < _CORE_INPUT_COUNT, 0);
+    return g_core.inputs[id];
 }

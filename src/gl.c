@@ -35,41 +35,42 @@
 #define GL_UNSIGNED_INT_8_8_8_8_REV               0x8367
 
 #define OPENGL_API_DECL_LIST \
-    _X(void, WINAPI, glClear,                    u32 mask) \
-    _X(void, WINAPI, glClearColor,               f32 r, f32 g, f32 b, f32 a) \
-    _X(void, ,       glViewport,                 i32 x, i32 y, i32 w, i32 h) \
-    _X(void, ,       glGenBuffers,               i32 count, u32 *vbos) \
-    _X(void, ,       glBindBuffer,               u32 target, u32 vbo) \
-    _X(void, ,       glBufferData,               u32 target, i32 size, ptr buf, u32 usage) \
-    _X(void, ,       glDeleteBuffers,            i32 count, u32 *vbos) \
-    _X(u32,  ,       glCreateShader,             u32 type) \
-    _X(void, ,       glShaderSource,             u32 shader, i32 count, cstr *srcs, i32 *src_lengths) \
-    _X(void, ,       glCompileShader,            u32 shader) \
-    _X(void, ,       glGetShaderiv,              u32 shader, u32 pname, i32 *params) \
-    _X(void, ,       glGetShaderInfoLog,         u32 shader, i32 maxlen, i32 *len, c8 *log) \
-    _X(void, ,       glDeleteShader,             u32 shader) \
-    _X(u32,  ,       glCreateProgram,            void) \
-    _X(void, ,       glAttachShader,             u32 sp, u32 shader) \
-    _X(void, ,       glLinkProgram,              u32 sp) \
-    _X(void, ,       glGetProgramiv,             u32 sp, u32 pname, i32 *params) \
-    _X(void, ,       glGetProgramInfoLog,        u32 sp, i32 maxlen, i32 *len, c8 *log) \
-    _X(void, ,       glUseProgram,               u32 sp) \
-    _X(void, ,       glDeleteProgram,            u32 sp) \
-    _X(void, ,       glGenFramebuffers,          i32 count, u32 *fbos) \
-    _X(void, ,       glDeleteTextures,           i32 count, u32 *textures) \
-    _X(void, ,       glDeleteFramebuffers,       i32 count, u32 *fbos) \
-    _X(void, ,       glBindFramebuffer,          u32 target, u32 fbo) \
-    _X(void, ,       glFramebufferTexture2D,     u32 target, u32 attachment, u32 textarget, u32 tex, i32 level) \
-    _X(u32,  ,       glCheckFramebufferStatus,   u32 target) \
-    _X(void, ,       glGenTextures,              i32 count, u32 *textures) \
-    _X(void, ,       glBindTexture,              u32 target, u32 tex) \
-    _X(void, ,       glTexParameteri,            u32 target, u32 id, i32 value) \
-    _X(void, ,       glTexImage2D,               u32 target, i32 level, i32 ifmt, i32 w, i32 h, i32 border, i32 fmt, u32 type, const ptr data) \
-    _X(void, ,       glDrawArrays,               u32 mode, i32 first, i32 count) \
-    _X(void, ,       glGenVertexArrays,          i32 size, u32 *vaos) \
-    _X(void, ,       glBindVertexArray,          u32 array) \
-    _X(void, ,       glVertexAttribPointer,      u32 idx, i32 size, u32 type, u8 normalized, i32 stride, const ptr p) \
-    _X(void, ,       glEnableVertexAttribArray,  u32 idx)
+    _X(void, glClear,                   u32 mask) \
+    _X(void, glClearColor,              f32 r, f32 g, f32 b, f32 a) \
+    _X(void, glViewport,                i32 x, i32 y, i32 w, i32 h) \
+    _X(void, glGenBuffers,              i32 count, u32 *vbos) \
+    _X(void, glBindBuffer,              u32 target, u32 vbo) \
+    _X(void, glBufferData,              u32 target, i32 size, ptr buf, u32 usage) \
+    _X(void, glDeleteBuffers,           i32 count, u32 *vbos) \
+    _X(void, glDeleteVertexArrays,      i32 count, u32 *vaos) \
+    _X(u32,  glCreateShader,            u32 type) \
+    _X(void, glShaderSource,            u32 shader, i32 count, cstr *srcs, i32 *src_lengths) \
+    _X(void, glCompileShader,           u32 shader) \
+    _X(void, glGetShaderiv,             u32 shader, u32 pname, i32 *params) \
+    _X(void, glGetShaderInfoLog,        u32 shader, i32 maxlen, i32 *len, c8 *log) \
+    _X(void, glDeleteShader,            u32 shader) \
+    _X(u32,  glCreateProgram,           void) \
+    _X(void, glAttachShader,            u32 sp, u32 shader) \
+    _X(void, glLinkProgram,             u32 sp) \
+    _X(void, glGetProgramiv,            u32 sp, u32 pname, i32 *params) \
+    _X(void, glGetProgramInfoLog,       u32 sp, i32 maxlen, i32 *len, c8 *log) \
+    _X(void, glUseProgram,              u32 sp) \
+    _X(void, glDeleteProgram,           u32 sp) \
+    _X(void, glGenFramebuffers,         i32 count, u32 *fbos) \
+    _X(void, glDeleteTextures,          i32 count, u32 *textures) \
+    _X(void, glDeleteFramebuffers,      i32 count, u32 *fbos) \
+    _X(void, glBindFramebuffer,         u32 target, u32 fbo) \
+    _X(void, glFramebufferTexture2D,    u32 target, u32 attachment, u32 textarget, u32 tex, i32 level) \
+    _X(u32,  glCheckFramebufferStatus,  u32 target) \
+    _X(void, glGenTextures,             i32 count, u32 *textures) \
+    _X(void, glBindTexture,             u32 target, u32 tex) \
+    _X(void, glTexParameteri,           u32 target, u32 id, i32 value) \
+    _X(void, glTexImage2D,              u32 target, i32 level, i32 ifmt, i32 w, i32 h, i32 border, i32 fmt, u32 type, const ptr data) \
+    _X(void, glDrawArrays,              u32 mode, i32 first, i32 count) \
+    _X(void, glGenVertexArrays,         i32 size, u32 *vaos) \
+    _X(void, glBindVertexArray,         u32 array) \
+    _X(void, glVertexAttribPointer,     u32 idx, i32 size, u32 type, u8 normalized, i32 stride, const ptr p) \
+    _X(void, glEnableVertexAttribArray, u32 idx)
 
 static struct {
     state_t state;
@@ -78,16 +79,20 @@ static struct {
     ptr ctx;
     u32 window_width;
     u32 window_height;
+    u32 render_width;
+    u32 render_height;
+    u32 max_render_width;
+    u32 max_render_height;
     struct {
-        #define _X(_r, _cc, _n, _a1, ...) _r (_cc *_n)(_a1, ##__VA_ARGS__);
+        #define _X(_r, _n, _a1, ...) _r (*_n)(_a1, ##__VA_ARGS__);
         OPENGL_API_DECL_LIST
         #undef _X
     } api;
     u32 vbo;
     u32 vao;
     u32 sp;
-    u32 fbo;
     u32 tex;
+    u32 fbo;
 } g_gl;
 
 u32 SwapBuffers(ptr dev);
@@ -108,6 +113,7 @@ c8* WINAPI glGetString(u32 id);
     } while(0)
 
 static u32 compile_shader(u32 type, cstr src);
+static void update_frame_vertices(void);
 
 void init_gl(ptr dev)
 {
@@ -149,7 +155,7 @@ void init_gl(ptr dev)
     assert_winapi_retval_report(e, e, wglMakeCurrent, "%p, %p", g_gl.dev, g_gl.ctx);
 
     struct { ptr *func; cstr name; } load_list[] = {
-        #define _X(_r, _cc, _n, _a1, ...) { (ptr*)&g_gl.api._n, #_n },
+        #define _X(_r, _n, _a1, ...) { (ptr*)&g_gl.api._n, #_n },
         OPENGL_API_DECL_LIST
         #undef _X
     };
@@ -179,21 +185,28 @@ void configure_gl(u32 max_width, u32 max_height)
     assert_report(g_gl.state >= STATE_INITIALIZED);
 
     g_gl.api.glDeleteBuffers(1, &g_gl.vbo);
+    g_gl.api.glDeleteVertexArrays(1, &g_gl.vao);
     g_gl.api.glDeleteProgram(g_gl.sp);
     g_gl.api.glDeleteFramebuffers(1, &g_gl.fbo);
     g_gl.api.glDeleteTextures(1, &g_gl.tex);
-    g_gl.vbo = g_gl.sp = g_gl.fbo = g_gl.tex = 0;
+    g_gl.vbo = g_gl.vao = g_gl.sp = g_gl.fbo = g_gl.tex = 0;
+
+    g_gl.max_render_width = max_width;
+    g_gl.max_render_height = max_height;
 
     assert_glapi(g_gl.api.glGenVertexArrays, "%d, %p", 1, &g_gl.vao);
     assert_glapi(g_gl.api.glBindVertexArray, "%u", g_gl.vao);
 
     assert_glapi(g_gl.api.glGenBuffers, "%d, %p", 1, &g_gl.vbo);
-    assert_glapi(g_gl.api.glBindBuffer, "%u, %u", GL_ARRAY_BUFFER, g_gl.vbo);
-    f32 verts[] = { -1,1,  1,1,  1,-1,  -1,1,  1,-1,  -1,-1 };
-    assert_glapi(g_gl.api.glBufferData, "%u, %d, %p, %u", GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
 
+    set_gl_window_size(g_gl.max_render_width, g_gl.max_render_height);
+    set_gl_render_resolution(g_gl.max_render_width, g_gl.max_render_height);
+    update_frame_vertices();
+
+    assert_glapi(g_gl.api.glVertexAttribPointer, "%u, %d, %u, %hhu, %d, %p", 0, 2, GL_FLOAT, 0, sizeof(f32) * 4, 0);
     assert_glapi(g_gl.api.glEnableVertexAttribArray, "%u", 0);
-    assert_glapi(g_gl.api.glVertexAttribPointer, "%u, %d, %u, %hhu, %d, %p", 0, 2, GL_FLOAT, 0, sizeof(f32) * 2, 0);
+    assert_glapi(g_gl.api.glVertexAttribPointer, "%u, %d, %u, %hhu, %d, %p", 1, 2, GL_FLOAT, 0, sizeof(f32) * 4, (ptr)(sizeof(f32) * 2));
+    assert_glapi(g_gl.api.glEnableVertexAttribArray, "%u", 1);
 
     assert_glapi(g_gl.api.glBindVertexArray, "%u", 0);
     assert_glapi(g_gl.api.glBindBuffer, "%u, %u", GL_ARRAY_BUFFER, 0);
@@ -202,7 +215,10 @@ void configure_gl(u32 max_width, u32 max_height)
         GL_VERTEX_SHADER,
         "#version 330 core\n"
         "layout (location = 0) in vec2 xy;\n"
+        "layout (location = 1) in vec2 uv;\n"
+        "out vec2 uv_out;\n"
         "void main() {\n"
+        "    uv_out = uv;\n"
         "    gl_Position = vec4(xy.x, xy.y, 0.0, 1.0); \n"
         "}"
     );
@@ -210,9 +226,11 @@ void configure_gl(u32 max_width, u32 max_height)
     u32 fs = compile_shader(
         GL_FRAGMENT_SHADER,
         "#version 330 core\n"
+        "in vec2 uv_out;\n"
         "out vec4 FragColor;\n"
+        "uniform sampler2D tex;\n"
         "void main() {\n"
-        "    FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);\n"
+        "    FragColor = texture(tex, uv_out);\n"
         "} "
     );
 
@@ -232,26 +250,21 @@ void configure_gl(u32 max_width, u32 max_height)
     assert_glapi(g_gl.api.glDeleteShader, "%u", vs);
     assert_glapi(g_gl.api.glDeleteShader, "%u", fs);
 
-    // g_gl.api.glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    // g_gl.api.glDeleteFramebuffers(1, &g_gl.fbo);
-    // g_gl.api.glDeleteTextures(1, &g_gl.tex);
-    // g_gl.fbo = g_gl.tex = 0;
+    assert_glapi(g_gl.api.glGenTextures, "%d, %p", 1, &g_gl.tex);
+    assert_glapi(g_gl.api.glBindTexture, "%u, %u", GL_TEXTURE_2D, g_gl.tex);
+    assert_glapi(g_gl.api.glTexParameteri, "%u, %u, %d", GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    assert_glapi(g_gl.api.glTexParameteri, "%u, %u, %d", GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    assert_glapi(
+        g_gl.api.glTexImage2D, "%u, %d, %d, %d, %d, %d, %d, %u, %p",
+        GL_TEXTURE_2D, 0, GL_RGB, max_width, max_height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0
+    );
+    assert_glapi(g_gl.api.glBindTexture, "%u, %u", GL_TEXTURE_2D, 0);
 
-    // assert_glapi(g_gl.api.glGenTextures, "%d, %p", 1, &g_gl.tex);
-    // assert_glapi(g_gl.api.glBindTexture, "%u, %u", GL_TEXTURE_2D, g_gl.tex);
-    // assert_glapi(g_gl.api.glTexParameteri, "%u, %u, %d", GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    // assert_glapi(g_gl.api.glTexParameteri, "%u, %u, %d", GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // assert_glapi(
-    //     g_gl.api.glTexImage2D, "%u, %d, %d, %d, %d, %d, %d, %u, %p",
-    //     GL_TEXTURE_2D, 0, GL_RGB, max_width, max_height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0
-    // );
-    // assert_glapi(g_gl.api.glBindTexture, "%u, %u", GL_TEXTURE_2D, 0);
-
-    // assert_glapi(g_gl.api.glGenFramebuffers, "%d, %p", 1, &g_gl.fbo);
-    // assert_glapi(g_gl.api.glBindFramebuffer, "%u, %u", GL_FRAMEBUFFER, g_gl.fbo);
-    // assert_glapi(g_gl.api.glFramebufferTexture2D, "%u, %u, %u, %u, %d", GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_gl.tex, 0);
-    // assert_print_error(g_gl.api.glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, "framebuffer readiness check failed (%d, %x)", glGetError(), g_gl.api.glCheckFramebufferStatus(GL_FRAMEBUFFER));
-    // assert_glapi(g_gl.api.glBindFramebuffer, "%u, %u", GL_FRAMEBUFFER, 0);
+    assert_glapi(g_gl.api.glGenFramebuffers, "%d, %p", 1, &g_gl.fbo);
+    assert_glapi(g_gl.api.glBindFramebuffer, "%u, %u", GL_FRAMEBUFFER, g_gl.fbo);
+    assert_glapi(g_gl.api.glFramebufferTexture2D, "%u, %u, %u, %u, %d", GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_gl.tex, 0);
+    assert_print_error(g_gl.api.glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, "framebuffer readiness check failed (%d, %x)", glGetError(), g_gl.api.glCheckFramebufferStatus(GL_FRAMEBUFFER));
+    assert_glapi(g_gl.api.glBindFramebuffer, "%u, %u", GL_FRAMEBUFFER, 0);
 
     print("GL configured for %ux%u mode", max_width, max_height);
     g_gl.state = STATE_ACTIVE;
@@ -284,26 +297,41 @@ void present_frame(void)
 
     assert_glapi(g_gl.api.glBindFramebuffer, "%u, %u", GL_FRAMEBUFFER, 0);
     assert_glapi(g_gl.api.glViewport, "%d, %d, %d, %d", 0, 0, g_gl.window_width, g_gl.window_height);
-    assert_glapi(g_gl.api.glClearColor, "%f, %f, %f, %f", 0.39, 0.58, 0.93, 1);
+    assert_glapi(g_gl.api.glClearColor, "%f, %f, %f, %f", 0, 0, 0, 0);
     assert_glapi(g_gl.api.glClear, "%u", GL_COLOR_BUFFER_BIT);
 
-    assert_glapi(g_gl.api.glUseProgram, "%u", g_gl.sp);
     assert_glapi(g_gl.api.glBindBuffer, "%u, %u", GL_ARRAY_BUFFER, g_gl.vbo);
     assert_glapi(g_gl.api.glBindVertexArray, "%u", g_gl.vao);
-    assert_glapi(g_gl.api.glDrawArrays, "%u, %d, %d", GL_TRIANGLES, 0, 3);
-
-    // assert_glapi(g_gl.api.glBindTexture, "%u, %u", GL_TEXTURE_2D, g_gl.tex);
+    assert_glapi(g_gl.api.glBindTexture, "%u, %u", GL_TEXTURE_2D, g_gl.tex);
+    assert_glapi(g_gl.api.glUseProgram, "%u", g_gl.sp);
+    assert_glapi(g_gl.api.glDrawArrays, "%u, %d, %d", GL_TRIANGLES, 0, 6);
 
     /* FIXME: works, but says "invalid handle value" */
     // assert_winapi_report(SwapBuffers, "%p", g_gl.dev);
+    
     SwapBuffers(g_gl.dev);
 }
 
 void set_gl_window_size(u32 w, u32 h)
 {
     assert_report(g_gl.state >= STATE_INITIALIZED);
-    g_gl.window_width = w;
-    g_gl.window_height = h;
+    if (g_gl.window_width != w || g_gl.window_height != h)
+    {
+        g_gl.window_width = w;
+        g_gl.window_height = h;
+        update_frame_vertices();
+    }
+}
+
+void set_gl_render_resolution(u32 w, u32 h)
+{
+    assert_report(g_gl.state >= STATE_INITIALIZED);
+    if (g_gl.render_width != w || g_gl.render_height != h)
+    {
+        g_gl.render_width = w;
+        g_gl.render_height = h;
+        update_frame_vertices();
+    }
 }
 
 u32 compile_shader(u32 type, cstr src)
@@ -322,4 +350,21 @@ u32 compile_shader(u32 type, cstr src)
         crash();
     }
     return shader;
+}
+
+void update_frame_vertices(void)
+{
+    // TODO: letterboxing
+    f32 u = g_gl.render_width / (f32)g_gl.max_render_width;
+    f32 v = g_gl.render_height / (f32)g_gl.max_render_height;
+    f32 verts[] = {
+        -1,  1, 0, v,
+         1,  1, u, v, 
+         1, -1, u, 0, 
+        -1,  1, 0, v,
+         1, -1, u, 0, 
+        -1, -1, 0, 0, 
+    };
+    assert_glapi(g_gl.api.glBindBuffer, "%u, %u", GL_ARRAY_BUFFER, g_gl.vbo);
+    assert_glapi(g_gl.api.glBufferData, "%u, %d, %p, %u", GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
 }

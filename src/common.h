@@ -1,6 +1,6 @@
 #pragma once
 
-#include <stdarg.h>
+// #include <stdarg.h>
 
 /* defines */
 #define true 1u
@@ -22,7 +22,7 @@ typedef float               f32;
 typedef double              f64;
 typedef const char         *cstr;
 typedef void               *ptr;
-// typedef unsigned char      *va_list;
+typedef unsigned char      *va_list;
 
 typedef enum state_t state_t;
 enum state_t {
@@ -39,8 +39,8 @@ enum state_t {
 #define min(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 #define max(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define countof(_a) (sizeof(_a)/sizeof((_a)[0]))
-// #define va_create(_last_arg) ((u8*)&(_last_arg) + 8)
-// #define va_arg(_list, _T) ( ( sizeof(_T) > 8) ? (**(_T**)((_list += 8) - 8)) : ( *(_T* )((_list += 8) - 8)) )
+#define va_start(_args, _last_arg) (_args = (u8*)&(_last_arg) + 8)
+#define va_arg(_list, _T) ( ( sizeof(_T) > 8) ? (**(_T**)((_list += 8) - 8)) : ( *(_T* )((_list += 8) - 8)) )
 
 
 /* function declarations */
