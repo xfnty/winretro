@@ -12,9 +12,10 @@ void _start(void)
 
     init_ui();
     init_gl(get_ui_device_context());
-    init_core("C:\\Dev\\personal\\cpp\\winretro\\.ignore\\swanstation_libretro.dll");
-    load_game("C:\\Dev\\personal\\cpp\\winretro\\.ignore\\game.chd");
-    ui_display_core_state(get_core_state());
+    configure_gl(1, 1);
+    // init_core("C:\\Dev\\personal\\cpp\\winretro\\.ignore\\swanstation_libretro.dll");
+    // load_game("C:\\Dev\\personal\\cpp\\winretro\\.ignore\\game.chd");
+    // ui_display_core_state(get_core_state());
 
     f64 last_frame = 0;
     for (u8 running = true; running; )
